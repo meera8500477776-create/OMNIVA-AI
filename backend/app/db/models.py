@@ -138,6 +138,37 @@ class CareerRecommendation(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class CareReminder(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_care_reminder_user_key"),
+    )
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
+    title: str = Field(max_length=120)
+    body: str = Field(max_length=500)
+    reminder_type: str = Field(default="deadline", max_length=30)
+    scheduled_at: datetime = Field(index=True)
+    timezone_name: str = Field(max_length=80)
+    quiet_start: str = Field(max_length=5)
+    quiet_end: str = Field(max_length=5)
+    idempotency_key: str = Field(max_length=100)
+    status: str = Field(default="scheduled", max_length=20, index=True)
+    fired_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    push_status: str = Field(default="pending", max_length=20)
+    push_attempted_at: datetime | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class CarePushSubscription(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("endpoint_hash", name="uq_care_push_endpoint_hash"),)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
+    endpoint_hash: str = Field(index=True, max_length=64)
+    encrypted_subscription: str = Field(max_length=12000)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class AuditEvent(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     actor_id: UUID | None = Field(

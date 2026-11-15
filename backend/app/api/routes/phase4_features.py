@@ -1,12 +1,17 @@
 from dataclasses import asdict
+from datetime import UTC, datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
+from app.db.models import CareReminder
+from app.db.session import get_session
 from features.care_companion.contracts import PersonaId
 from features.care_companion.conversation import Conversation
 from features.care_companion.memory import ConsentMemory
@@ -60,6 +65,17 @@ class MemoryConsentRequest(BaseModel):
 
 class MemoryRequest(BaseModel):
     content: str = Field(min_length=1, max_length=500)
+
+
+class ReminderRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(default="", max_length=500)
+    reminder_type: str = Field(default="deadline", pattern="^(deadline|call_prompt)$")
+    scheduled_at: datetime
+    timezone_name: str = Field(min_length=1, max_length=80)
+    quiet_start: str = Field(default="22:00", pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    quiet_end: str = Field(default="08:00", pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    consent: bool = False
 
 
 class EmailState:
@@ -281,3 +297,123 @@ def read_companion_memory(user: CurrentUser):
 def delete_companion_memory(user: CurrentUser):
     ensure_demo()
     companion_state(str(user.id)).memory.delete_all()
+
+
+@router.post("/care-companion/reminders", status_code=201)
+def create_care_reminder(
+    payload: ReminderRequest,
+    user: CurrentUser,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=100),
+    session: Session = Depends(get_session),
+):
+    if not payload.consent:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "consent_required", "message": "Reminder consent is required"},
+        )
+    try:
+        ZoneInfo(payload.timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_timezone", "message": "Use a valid IANA timezone"},
+        ) from exc
+    scheduled = payload.scheduled_at
+    if scheduled.tzinfo is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "timezone_required", "message": "Deadline must include a timezone"},
+        )
+    scheduled = scheduled.astimezone(UTC)
+    if scheduled <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "deadline_in_past", "message": "Deadline must be in the future"},
+        )
+    prior = session.exec(
+        select(CareReminder).where(
+            CareReminder.user_id == user.id, CareReminder.idempotency_key == idempotency_key
+        )
+    ).first()
+    if prior:
+        submitted = (
+            payload.title,
+            payload.body,
+            payload.reminder_type,
+            scheduled,
+            payload.timezone_name,
+            payload.quiet_start,
+            payload.quiet_end,
+        )
+        stored = (
+            prior.title,
+            prior.body,
+            prior.reminder_type,
+            prior.scheduled_at,
+            prior.timezone_name,
+            prior.quiet_start,
+            prior.quiet_end,
+        )
+        if stored != submitted:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "idempotency_conflict",
+                    "message": "This idempotency key was used for another reminder",
+                },
+            )
+        return {**prior.model_dump(mode="json"), "demo": True}
+    reminder = CareReminder(
+        user_id=user.id,
+        title=payload.title,
+        body=payload.body,
+        reminder_type=payload.reminder_type,
+        scheduled_at=scheduled,
+        timezone_name=payload.timezone_name,
+        quiet_start=payload.quiet_start,
+        quiet_end=payload.quiet_end,
+        idempotency_key=idempotency_key,
+    )
+    session.add(reminder)
+    session.commit()
+    session.refresh(reminder)
+    return {**reminder.model_dump(mode="json"), "demo": True}
+
+
+@router.get("/care-companion/reminders")
+def list_care_reminders(user: CurrentUser, session: Session = Depends(get_session)):
+    rows = session.exec(
+        select(CareReminder)
+        .where(CareReminder.user_id == user.id)
+        .order_by(CareReminder.scheduled_at.desc())
+        .limit(100)
+    ).all()
+    return {
+        "items": [row.model_dump(mode="json") for row in rows],
+        "demo": True,
+        "closed_browser_notifications": False,
+    }
+
+
+@router.post("/care-companion/reminders/{reminder_id}/acknowledge")
+def acknowledge_care_reminder(
+    reminder_id: str, user: CurrentUser, session: Session = Depends(get_session)
+):
+    from uuid import UUID
+
+    try:
+        reminder = session.exec(
+            select(CareReminder).where(
+                CareReminder.id == UUID(reminder_id), CareReminder.user_id == user.id
+            )
+        ).first()
+    except ValueError:
+        reminder = None
+    if reminder is None:
+        raise HTTPException(
+            status_code=404, detail={"code": "not_found", "message": "Reminder not found"}
+        )
+    reminder.acknowledged_at = datetime.now(UTC)
+    session.add(reminder)
+    session.commit()
+    return {"acknowledged": True}

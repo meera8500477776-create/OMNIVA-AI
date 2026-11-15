@@ -1,17 +1,23 @@
+import asyncio
 import logging
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.deps import get_current_user
 from app.api.routes import auth, dashboard, features, health, learning, phase4_features, users
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
+from app.db.models import CareReminder
+from app.db.session import Session, engine
 from features.autopilot.router import create_autopilot_router
 from features.autopilot.service import AutopilotService
 
@@ -23,6 +29,62 @@ app = FastAPI(
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url=None,
 )
+
+
+async def reminder_scheduler() -> None:
+    """Persistently dispatch due reminder events; clients receive them by polling."""
+    while True:
+        try:
+            now = datetime.now(UTC)
+            with Session(engine) as session:
+                due = session.exec(
+                    select(CareReminder)
+                    .where(CareReminder.status == "scheduled", CareReminder.scheduled_at <= now)
+                    .with_for_update(skip_locked=True)
+                ).all()
+                for reminder in due:
+                    local = now.astimezone(ZoneInfo(reminder.timezone_name))
+                    start = time.fromisoformat(reminder.quiet_start)
+                    end = time.fromisoformat(reminder.quiet_end)
+                    in_quiet = (
+                        (local.time() >= start or local.time() < end)
+                        if start > end
+                        else (start <= local.time() < end)
+                    )
+                    if in_quiet:
+                        next_day = local.date() + (
+                            timedelta(days=1) if local.time() >= start else timedelta()
+                        )
+                        reminder.scheduled_at = datetime.combine(
+                            next_day, end, ZoneInfo(reminder.timezone_name)
+                        ).astimezone(UTC)
+                    else:
+                        reminder.status = "fired"
+                        reminder.fired_at = now
+                    session.add(reminder)
+                if due:
+                    session.commit()
+        except Exception:
+            logger.exception("Reminder scheduler iteration failed")
+        await asyncio.sleep(15)
+
+
+@app.on_event("startup")
+async def start_reminder_scheduler() -> None:
+    app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
+
+
+@app.on_event("shutdown")
+async def stop_reminder_scheduler() -> None:
+    task = getattr(app.state, "reminder_scheduler_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
 autopilot_service = AutopilotService()
 
 

@@ -156,19 +156,19 @@ test.describe('profile, settings, routes and accessibility', () => {
     await expect(page.getByRole('status')).toContainText(/saved on this device/i);
     await expect(page.getByText(/local only/i)).toBeVisible();
   });
-  test('all 17 implemented routes open directly', async ({ page }) => {
+  test('all 20 implemented routes open directly', async ({ page }) => {
     const routes = [
       ['/', /big goals/i], ['/features', /more than a course catalog/i], ['/login', /good to see you/i],
       ['/register', /make room to grow/i], ['/forgot-password', /forgot your password/i],
       ['/dashboard', /good morning/i], ['/courses', /find your next spark/i], ['/courses/product-design', /product design foundations/i],
       ['/learn/design-lesson-6', /discover the real problem/i], ['/progress', /look how far you.ve come/i],
       ['/desktop-agent', /a calmer way to get things done/i], ['/voice-assistant', /think out loud/i], ['/career', /find a direction that feels like you/i],
-      ['/ai-tutor', /let.s figure it out together/i], ['/avatar', /give your words a little life/i], ['/profile', /a little about you/i], ['/settings', /make this space yours/i],
+      ['/ai-tutor', /let.s figure it out together/i], ['/avatar', /give your words a little life/i], ['/email-agent', /email agent/i], ['/care-companion', /ai care companion/i], ['/autopilot', /autopilot/i], ['/profile', /a little about you/i], ['/settings', /make this space yours/i],
     ] as const;
     for (const [route, title] of routes) {
       const routePage = await page.context().newPage();
       await blockExternalRequests(routePage);
-      if (['/dashboard', '/courses', '/courses/product-design', '/learn/design-lesson-6', '/progress', '/desktop-agent', '/voice-assistant', '/career', '/ai-tutor', '/avatar', '/profile', '/settings'].includes(route)) await setDemoSession(routePage);
+      if (['/dashboard', '/courses', '/courses/product-design', '/learn/design-lesson-6', '/progress', '/desktop-agent', '/voice-assistant', '/career', '/ai-tutor', '/avatar', '/email-agent', '/care-companion', '/autopilot', '/profile', '/settings'].includes(route)) await setDemoSession(routePage);
       await routePage.goto(route, { waitUntil: 'domcontentloaded' });
       await expect(routePage.getByRole('heading', { name: title }).first(), 'Route heading: ' + route).toBeVisible();
       await expect(routePage.locator('main')).toHaveCount(1);
@@ -183,5 +183,83 @@ test.describe('profile, settings, routes and accessibility', () => {
   });
 });
 
-test.skip('Email Agent panel flow awaits Phase 6 React route and API contract registration', async () => {});
-test.skip('Care Companion panel flow awaits Phase 6 React route and API contract registration', async () => {});
+test('Email Agent loads inbox, drafts, gates approval and simulates send through its API', async ({ page }) => {
+  await setDemoSession(page);
+  await blockExternalRequests(page);
+  const calls: string[] = [];
+  await page.route('**/api/v1/features/email-agent/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    calls.push(`${route.request().method()} ${path}`);
+    if (path.endsWith('/inbox')) return route.fulfill({ json: { items: [{ id: 'mail-1', sender: 'Demo sender', subject: 'Course update', category: 'updates', summary: 'A fictional course update.', unread: true }] } });
+    if (path.endsWith('/drafts')) return route.fulfill({ json: { draft_id: 'draft-1', subject: 'Re: Course update', body: 'Thanks for the update.' } });
+    if (path.endsWith('/approvals')) return route.fulfill({ json: { approval: 'approval-1' } });
+    if (path.endsWith('/send')) return route.fulfill({ json: { sent: false, status: 'simulated', demo: true } });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.goto('/email-agent');
+  await expect(page.getByText('Course update', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /review and draft/i }).click();
+  await expect(page.getByText('Thanks for the update.')).toBeVisible();
+  await page.getByRole('button', { name: /request send approval/i }).click();
+  await page.getByRole('button', { name: /approve simulated send/i }).click();
+  await expect(page.getByRole('status')).toContainText(/no email was sent/i);
+  expect(calls.map(x => x.split(' ')[0])).toEqual(['GET', 'POST', 'POST', 'POST']);
+});
+
+test('Care Companion starts a consented session and persists a deadline reminder through its API', async ({ page }) => {
+  await setDemoSession(page);
+  await blockExternalRequests(page);
+  const calls: string[] = [];
+  const reminders: Array<{ id: string; title: string; body: string; reminder_type: string; scheduled_at: string; status: string; acknowledged_at?: string }> = [];
+  await page.route('**/api/v1/features/care-companion/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    calls.push(`${route.request().method()} ${path}`);
+    if (path.endsWith('/reminders') && route.request().method() === 'GET') return route.fulfill({ json: { items: reminders.filter(r => !r.acknowledged_at) } });
+    if (path.endsWith('/reminders') && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON();
+      const row = { id: `reminder-${reminders.length + 1}`, title: body.title, body: body.body, reminder_type: body.reminder_type, scheduled_at: body.scheduled_at, status: body.reminder_type === 'call_prompt' ? 'fired' : 'scheduled' };
+      reminders.push(row);
+      return route.fulfill({ status: 201, json: row });
+    }
+    if (path.endsWith('/acknowledge')) { const row = reminders.find(r => path.includes(r.id)); if (row) row.acknowledged_at = new Date().toISOString(); return route.fulfill({ json: { acknowledged: true } }); }
+    if (path.endsWith('/sessions') && route.request().method() === 'POST') return route.fulfill({ status: 201, json: { session_id: 'session-1' } });
+    if (path.endsWith('/turns')) return route.fulfill({ json: { answer: 'I am here to listen.' } });
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto('/care-companion');
+  await page.getByRole('checkbox').first().check();
+  await page.getByRole('button', { name: /start in-app conversation/i }).click();
+  await page.getByLabel('Message the companion').fill('I have a deadline tomorrow.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('I am here to listen.')).toBeVisible();
+  await page.getByLabel('What should we remind you about?').fill('Submit project');
+  await page.getByLabel('When').fill('2030-05-01T12:00');
+  await page.getByRole('checkbox').nth(1).check();
+  await page.getByRole('button', { name: 'Save reminder' }).click();
+  await expect(page.getByText('Deadline reminder saved.', { exact: true })).toBeVisible();
+  await page.getByLabel('Reminder type').selectOption('call_prompt');
+  await page.getByLabel('What should we remind you about?').fill('Time for a check-in');
+  await page.getByLabel('When').fill('2030-05-02T12:00');
+  await page.getByRole('button', { name: 'Save reminder' }).click();
+  await expect(page.getByRole('alert')).toContainText('Incoming AI companion check-in');
+  await page.getByRole('button', { name: 'Start check-in' }).click();
+  await expect(page.getByText('Check-in acknowledged.', { exact: true })).toBeVisible();
+  expect(calls.some(x => x.startsWith('POST ') && x.endsWith('/reminders'))).toBeTruthy();
+  expect(calls.some(x => x.startsWith('POST ') && x.endsWith('/sessions'))).toBeTruthy();
+});
+
+test('Autopilot requests a reviewable plan from its API', async ({ page }) => {
+  await setDemoSession(page);
+  await blockExternalRequests(page);
+  let requested = false;
+  await page.route('**/api/v1/autopilot/plans', async route => {
+    requested = true;
+    const body = route.request().postDataJSON();
+    return route.fulfill({ json: { id: 'plan-1', user_id: 'qa-demo-learner', request: body.request, demo: true, steps: [{ id: 'step-1', description: 'Review options', tool: 'search', expected_output: 'Three options', dependencies: [], risk: 'low', approval_required: true }] } });
+  });
+  await page.goto('/autopilot');
+  await page.getByRole('button', { name: /create a task/i }).click();
+  await page.getByRole('button', { name: /generate plan/i }).click();
+  await expect(page.getByRole('heading', { name: /review the proposed plan/i })).toBeVisible();
+  expect(requested).toBeTruthy();
+});

@@ -19,6 +19,9 @@ const TutorPage=lazy(()=>import('./pages-tutor-avatar').then(m=>({default:m.Tuto
 const AvatarPage=lazy(()=>import('./pages-tutor-avatar').then(m=>({default:m.AvatarPage})))
 const ProfilePage=lazy(()=>import('./pages-account').then(m=>({default:m.ProfilePage})))
 const SettingsPage=lazy(()=>import('./pages-account').then(m=>({default:m.SettingsPage})))
+const CareCompanionPage=lazy(()=>import('./pages-phase4').then(m=>({default:m.CareCompanionPage})))
+const EmailAgentPage=lazy(()=>import('./pages-phase4').then(m=>({default:m.EmailAgentPage})))
+const AutopilotPage=lazy(()=>import('./pages-phase4').then(m=>({default:m.AutopilotPage})))
 function Guest({children}:{children:ReactNode}) { const {user}=useAuth();return user?<Navigate to="/dashboard" replace/>:<>{children}</> }
 function PageLoading(){return <div className="route-loading" role="status">Opening your learning space…</div>}
 export default function App(){return <Suspense fallback={<PageLoading/>}><Routes>
@@ -29,5 +32,6 @@ export default function App(){return <Suspense fallback={<PageLoading/>}><Routes
  <Route element={<ProtectedRoute/>}><Route element={<AppShell/>}>
   <Route path="/dashboard" element={<DashboardPage/>}/><Route path="/courses" element={<CoursesPage/>}/><Route path="/courses/:id" element={<CourseDetailPage/>}/><Route path="/learn/:id" element={<LessonPage/>}/><Route path="/progress" element={<ProgressPage/>}/>
   <Route path="/desktop-agent" element={<DesktopAgentPage/>}/><Route path="/voice-assistant" element={<VoicePage/>}/><Route path="/career" element={<CareerPage/>}/><Route path="/ai-tutor" element={<TutorPage/>}/><Route path="/avatar" element={<AvatarPage/>}/><Route path="/profile" element={<ProfilePage/>}/><Route path="/settings" element={<SettingsPage/>}/>
+  <Route path="/email-agent" element={<EmailAgentPage/>}/><Route path="/care-companion" element={<CareCompanionPage/>}/><Route path="/autopilot" element={<AutopilotPage/>}/>
  </Route></Route><Route path="*" element={<NotFound/>}/>
  </Routes></Suspense>}

@@ -159,6 +159,65 @@ def test_care_companion_consent_personas_memory_and_owner_isolation(client):
     )
 
 
+def test_care_deadline_reminder_consent_persistence_idempotency_and_owner_scope(client):
+    owner = create_user(client)
+    other = create_user(client)
+    headers = auth(owner)
+    other_headers = auth(other)
+    payload = {
+        "title": "Submit project",
+        "body": "Review the final draft",
+        "reminder_type": "deadline",
+        "scheduled_at": "2030-05-01T12:00:00+05:30",
+        "timezone_name": "Asia/Kolkata",
+        "quiet_start": "22:00",
+        "quiet_end": "08:00",
+        "consent": False,
+    }
+    denied = client.post(
+        "/api/v1/features/care-companion/reminders",
+        headers={**headers, "Idempotency-Key": "reminder-consent-001"},
+        json=payload,
+    )
+    assert denied.status_code == 403
+
+    payload["consent"] = True
+    created = client.post(
+        "/api/v1/features/care-companion/reminders",
+        headers={**headers, "Idempotency-Key": "reminder-submit-001"},
+        json=payload,
+    )
+    assert created.status_code == 201
+    reminder_id = created.json()["id"]
+    repeated = client.post(
+        "/api/v1/features/care-companion/reminders",
+        headers={**headers, "Idempotency-Key": "reminder-submit-001"},
+        json=payload,
+    )
+    assert repeated.status_code == 201 and repeated.json()["id"] == reminder_id
+    conflict_payload = {**payload, "title": "Changed title"}
+    conflict = client.post(
+        "/api/v1/features/care-companion/reminders",
+        headers={**headers, "Idempotency-Key": "reminder-submit-001"},
+        json=conflict_payload,
+    )
+    assert conflict.status_code == 409
+    assert client.get("/api/v1/features/care-companion/reminders", headers=headers).json()["items"]
+    assert (
+        client.get("/api/v1/features/care-companion/reminders", headers=other_headers).json()[
+            "items"
+        ]
+        == []
+    )
+    assert (
+        client.post(
+            f"/api/v1/features/care-companion/reminders/{reminder_id}/acknowledge",
+            headers=other_headers,
+        ).status_code
+        == 404
+    )
+
+
 def test_autopilot_internship_workflow_stops_at_approval_and_is_user_bound(client):
     owner = create_user(client)
     other = create_user(client)
