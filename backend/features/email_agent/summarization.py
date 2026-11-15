@@ -1,5 +1,6 @@
 from .contracts import Email
 
+
 def summarize(email: Email, max_chars: int = 220) -> str:
     """Deterministic extractive preview; email text is always treated as untrusted data."""
     text = " ".join(email.body.split())

@@ -8,7 +8,7 @@ def test_frontend_registration_payload_matches_api():
     base = os.environ.get('OMNIVA_API_BASE_URL', 'http://127.0.0.1:8000').rstrip('/')
     response = httpx.post(f'{base}/api/v1/auth/register', json={
         'name': 'Frontend Contract Learner',
-        'email': f'qa-ui-{uuid.uuid4().hex}@example.test',
+        'email': f'qa-ui-{uuid.uuid4().hex}@example.com',
         'password': 'qa-only-safe-password-123',
     }, timeout=8)
     assert response.status_code == 201, (
@@ -20,7 +20,7 @@ def test_frontend_registration_payload_matches_api():
 def test_frontend_career_constraints_payload_matches_api():
     base = os.environ.get('OMNIVA_API_BASE_URL', 'http://127.0.0.1:8000').rstrip('/')
     registered = httpx.post(f'{base}/api/v1/auth/register', json={
-        'email': f'qa-career-{uuid.uuid4().hex}@example.test',
+        'email': f'qa-career-{uuid.uuid4().hex}@example.com',
         'display_name': 'Career Contract Learner',
         'password': 'qa-only-safe-password-123',
     }, timeout=8)
@@ -31,6 +31,7 @@ def test_frontend_career_constraints_payload_matches_api():
         'interests': ['Creative problem-solving'],
         'skills': [],
         'constraints': {'goal': 'Explore accessible learning design'},
+        'consent': True,
     }, timeout=8)
     assert response.status_code == 200, (
         'Frontend sends constraints as an object while backend declares list[str]. '

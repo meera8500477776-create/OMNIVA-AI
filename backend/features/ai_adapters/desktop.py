@@ -1,13 +1,14 @@
 """Safe desktop intent preview boundary. No OS automation is implemented here."""
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
-from typing import Awaitable, Callable
 
-from .common import AdapterError, Mode, RuntimeConfig, new_id, utc_now, run_bounded
+from .common import AdapterError, Mode, RuntimeConfig, new_id, run_bounded, utc_now
 
 
 @dataclass(slots=True)
@@ -51,11 +52,17 @@ class DesktopAdapter:
         self.plans: dict[str, DesktopPlan] = {}
 
     def create_session(
-        self, user_id: str, capabilities: list[str], consent_version: str,
-        user_initiated: bool, mode: Mode | None = None,
+        self,
+        user_id: str,
+        capabilities: list[str],
+        consent_version: str,
+        user_initiated: bool,
+        mode: Mode | None = None,
     ) -> dict[str, object]:
         if not user_initiated:
-            raise AdapterError("user_action_required", "Start the desktop session from the local companion", 403)
+            raise AdapterError(
+                "user_action_required", "Start the desktop session from the local companion", 403
+            )
         if not consent_version.strip():
             raise AdapterError("consent_required", "A consent version is required", 403)
         allowed = {"preview"}
@@ -63,11 +70,17 @@ class DesktopAdapter:
             allowed.add("execute")
         requested = set(capabilities)
         if requested - allowed:
-            raise AdapterError("capability_not_allowed", "Only the preview capability is available", 403)
+            raise AdapterError(
+                "capability_not_allowed", "Only the preview capability is available", 403
+            )
         session = DesktopSession(new_id(), user_id, tuple(sorted(requested)), consent_version)
         self.sessions[session.session_id] = session
-        return {"session_id": session.session_id, "companion_challenge": new_id(), "state": session.state,
-                "mode": (mode or self.config.default_mode).value}
+        return {
+            "session_id": session.session_id,
+            "companion_challenge": new_id(),
+            "state": session.state,
+            "mode": (mode or self.config.default_mode).value,
+        }
 
     def preview(self, session_id: str, command: str) -> dict[str, object]:
         session = self._session(session_id)
@@ -76,7 +89,9 @@ class DesktopAdapter:
         normalized = " ".join(command.casefold().split())
         # No free-form command execution, URLs, paths, shell or generated argument payloads.
         if normalized not in {"open calculator", "launch calculator"}:
-            raise AdapterError("command_not_allowed", "This desktop command is not in the preview allowlist", 422)
+            raise AdapterError(
+                "command_not_allowed", "This desktop command is not in the preview allowlist", 422
+            )
         action = "open_calculator"
         material = json.dumps({"session": session_id, "action": action}, sort_keys=True).encode()
         digest = hashlib.sha256(material).hexdigest()
@@ -84,23 +99,40 @@ class DesktopAdapter:
         self.plans[plan.plan_id] = plan
         session.pending_plan_hash = digest
         session.state = "awaiting_approval"
-        return {"plan_id": plan.plan_id, "plan_hash": digest, "actions": [asdict(plan)],
-                "approval_required": True, "simulation": True}
+        return {
+            "plan_id": plan.plan_id,
+            "plan_hash": digest,
+            "actions": [asdict(plan)],
+            "approval_required": True,
+            "simulation": True,
+        }
 
-    def approve(self, session_id: str, plan_id: str, plan_hash: str, confirmed: bool) -> dict[str, object]:
+    def approve(
+        self, session_id: str, plan_id: str, plan_hash: str, confirmed: bool
+    ) -> dict[str, object]:
         session = self._session(session_id)
         plan = self._plan(session_id, plan_id)
         if session.state != "awaiting_approval":
-            raise AdapterError("session_state_conflict", "Desktop session is not awaiting approval", 409)
+            raise AdapterError(
+                "session_state_conflict", "Desktop session is not awaiting approval", 409
+            )
         if not confirmed:
-            raise AdapterError("explicit_confirmation_required", "Confirm this exact plan in the local companion", 403)
+            raise AdapterError(
+                "explicit_confirmation_required",
+                "Confirm this exact plan in the local companion",
+                403,
+            )
         if not plan_hash or plan_hash != plan.plan_hash or session.pending_plan_hash != plan_hash:
-            raise AdapterError("plan_hash_mismatch", "The approved plan changed; preview it again", 409)
+            raise AdapterError(
+                "plan_hash_mismatch", "The approved plan changed; preview it again", 409
+            )
         session.approved_plan_hash = plan_hash
         session.state = "approved"
         return {"session_id": session_id, "plan_id": plan_id, "state": "approved"}
 
-    async def execute(self, session_id: str, plan_id: str, mode: Mode | None = None) -> dict[str, object]:
+    async def execute(
+        self, session_id: str, plan_id: str, mode: Mode | None = None
+    ) -> dict[str, object]:
         session = self._session(session_id)
         plan = self._plan(session_id, plan_id)
         selected_mode = mode or self.config.default_mode
@@ -111,20 +143,31 @@ class DesktopAdapter:
         if selected_mode == Mode.DEMO:
             session.execution_id = new_id()
             session.state = "completed"
-            return {"execution_id": session.execution_id, "state": "completed", "simulation": True,
-                    "message": "Simulated desktop action; the operating system was not controlled"}
+            return {
+                "execution_id": session.execution_id,
+                "state": "completed",
+                "simulation": True,
+                "message": "Simulated desktop action; the operating system was not controlled",
+            }
         # This adapter intentionally has no OS executor. Configuration alone is insufficient.
         if not self.config.real_desktop_approved or self.executor is None:
-            raise AdapterError("desktop_executor_unavailable",
-                               "Real desktop execution requires an approved local companion", 503)
+            raise AdapterError(
+                "desktop_executor_unavailable",
+                "Real desktop execution requires an approved local companion",
+                503,
+            )
         if "execute" not in session.capabilities:
-            raise AdapterError("capability_not_approved", "This session lacks local execute capability", 403)
+            raise AdapterError(
+                "capability_not_approved", "This session lacks local execute capability", 403
+            )
         session.execution_id = new_id()
         session.state = "running"
         task = asyncio.current_task()
         session.in_flight = task
         try:
-            result = await run_bounded(self.executor(plan), self.config.provider_timeout_seconds, "desktop")
+            result = await run_bounded(
+                self.executor(plan), self.config.provider_timeout_seconds, "desktop"
+            )
         except asyncio.CancelledError:
             session.state = "cancelled"
             raise
@@ -138,7 +181,12 @@ class DesktopAdapter:
             session.state = "cancelled"
             raise AdapterError("execution_cancelled", "Desktop execution was cancelled", 409)
         session.state = "completed"
-        return {"execution_id": session.execution_id, "state": "completed", "simulation": False, "result": result}
+        return {
+            "execution_id": session.execution_id,
+            "state": "completed",
+            "simulation": False,
+            "result": result,
+        }
 
     def cancel(self, session_id: str) -> dict[str, object]:
         session = self._session(session_id)
@@ -152,8 +200,12 @@ class DesktopAdapter:
 
     def status(self, session_id: str) -> dict[str, object]:
         session = self._session(session_id)
-        return {"session_id": session_id, "state": session.state, "execution_id": session.execution_id,
-                "cancellation_requested": session.cancellation_requested}
+        return {
+            "session_id": session_id,
+            "state": session.state,
+            "execution_id": session.execution_id,
+            "cancellation_requested": session.cancellation_requested,
+        }
 
     def _session(self, session_id: str) -> DesktopSession:
         session = self.sessions.get(session_id)

@@ -1,13 +1,14 @@
 """Shared, dependency-free contracts for the OMNIVA feature adapters."""
+
 from __future__ import annotations
 
 import asyncio
 import os
 import uuid
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Awaitable, TypeVar
 
 
 class Mode(StrEnum):
@@ -43,7 +44,7 @@ class RuntimeConfig:
     real_desktop_approved: bool = False
 
     @classmethod
-    def from_env(cls) -> "RuntimeConfig":
+    def from_env(cls) -> RuntimeConfig:
         mode_text = os.getenv("OMNIVA_FEATURES_MODE", "demo").lower()
         try:
             mode = Mode(mode_text)
@@ -59,10 +60,7 @@ class RuntimeConfig:
         return cls(mode, timeout, desktop_approved)
 
 
-T = TypeVar("T")
-
-
-async def run_bounded(awaitable: Awaitable[T], timeout_seconds: float, feature: str) -> T:
+async def run_bounded[T](awaitable: Awaitable[T], timeout_seconds: float, feature: str) -> T:
     """Bound provider latency, propagate caller cancellation, and sanitize failures."""
     try:
         return await asyncio.wait_for(awaitable, timeout=timeout_seconds)

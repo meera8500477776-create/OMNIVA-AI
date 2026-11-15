@@ -1,10 +1,18 @@
 from .contracts import Category, Email
 
-INJECTION_MARKERS = ("ignore previous instructions", "reveal your system prompt", "send credentials", "run this command", "ignore all prior rules")
+INJECTION_MARKERS = (
+    "ignore previous instructions",
+    "reveal your system prompt",
+    "send credentials",
+    "run this command",
+    "ignore all prior rules",
+)
+
 
 def injection_suspected(text: str) -> bool:
     folded = text.casefold()
     return any(marker in folded for marker in INJECTION_MARKERS)
+
 
 def classify(email: Email) -> Category:
     text = f"{email.sender} {email.subject} {email.body}".casefold()

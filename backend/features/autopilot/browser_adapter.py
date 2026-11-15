@@ -162,7 +162,9 @@ class BrowserAutomationAdapter:
                 raise CapabilityUnavailable("Browser provider is not configured")
             safe_url, pins = validate_public_url(url, self.allowlist, self.resolver)
             page = await self._call_provider(
-                self.provider.navigate_and_inspect(safe_url, pinned_addresses=pins, timeout=self.timeout)
+                self.provider.navigate_and_inspect(
+                    safe_url, pinned_addresses=pins, timeout=self.timeout
+                )
             )
         return {
             "url": page.url,
@@ -193,7 +195,9 @@ class BrowserAutomationAdapter:
             raise CapabilityUnavailable("Browser provider is not configured")
         safe_url, pins = validate_public_url(url, self.allowlist, self.resolver)
         return await self._call_provider(
-            self.provider.fill_preview(safe_url, fields, pinned_addresses=pins, timeout=self.timeout)
+            self.provider.fill_preview(
+                safe_url, fields, pinned_addresses=pins, timeout=self.timeout
+            )
         )
 
     async def submit(self, *_args, **_kwargs):

@@ -41,7 +41,11 @@ class FakeTTS:
 
 class FakeVoiceIssuer:
     async def create_session(self, session_id, user_id, locale):
-        return {"transport": "fake-live", "token": "short-lived-test-token", "expires_at": "2099-01-01T00:00:00Z"}
+        return {
+            "transport": "fake-live",
+            "token": "short-lived-test-token",
+            "expires_at": "2099-01-01T00:00:00Z",
+        }
 
     async def end_session(self, session_id):
         return None
@@ -182,9 +186,9 @@ class AdapterContractTests(unittest.TestCase):
         with self.assertRaises(AdapterError):
             asyncio.run(adapter.send_turn(sid, "again"))
 
-
     def test_voice_demo_transcript_and_conversation_state(self):
         voice = VoiceAdapter()
+
         async def check():
             created = await voice.create_session("u1")
             self.assertEqual(created["transport"], "simulation")
@@ -197,7 +201,9 @@ class AdapterContractTests(unittest.TestCase):
             self.assertEqual(voice.status(created["session_id"])["turn_count"], 1)
             ended = await voice.end_session(created["session_id"])
             self.assertEqual(ended["state"], "ended")
+
         asyncio.run(check())
+
     def test_missing_live_providers_are_clear(self):
         voice = VoiceAdapter(RuntimeConfig(Mode.LIVE))
         with self.assertRaises(AdapterError) as voice_error:
@@ -210,17 +216,27 @@ class AdapterContractTests(unittest.TestCase):
         self.assertEqual(tutor_error.exception.code, "provider_unavailable")
 
     def test_adapter_errors_do_not_leak_provider_details(self):
-        voice = VoiceAdapter(RuntimeConfig(Mode.LIVE, 0.2), dialogue=ErrorDialogue(), tts=FakeTTS(), transport_issuer=FakeVoiceIssuer())
+        voice = VoiceAdapter(
+            RuntimeConfig(Mode.LIVE, 0.2),
+            dialogue=ErrorDialogue(),
+            tts=FakeTTS(),
+            transport_issuer=FakeVoiceIssuer(),
+        )
         sid = asyncio.run(voice.create_session("u1"))["session_id"]
         with self.assertRaises(AdapterError) as raised:
             asyncio.run(voice.submit_text(sid, "Hi"))
         self.assertEqual(raised.exception.code, "voice_provider_error")
         self.assertNotIn("secret", raised.exception.message)
 
-
     def test_live_voice_uses_injected_token_stt_dialogue_and_tts_providers(self):
-        voice = VoiceAdapter(RuntimeConfig(Mode.LIVE, 0.5), stt=FakeSTT(), dialogue=FakeDialogue(),
-                             tts=FakeTTS(), transport_issuer=FakeVoiceIssuer())
+        voice = VoiceAdapter(
+            RuntimeConfig(Mode.LIVE, 0.5),
+            stt=FakeSTT(),
+            dialogue=FakeDialogue(),
+            tts=FakeTTS(),
+            transport_issuer=FakeVoiceIssuer(),
+        )
+
         async def check():
             created = await voice.create_session("u1", locale="en")
             self.assertEqual(created["transport"], "fake-live")
@@ -232,6 +248,7 @@ class AdapterContractTests(unittest.TestCase):
             self.assertEqual(result["audio_ref"], "test-audio-ref")
             await voice.end_session(created["session_id"])
             self.assertEqual(voice.status(created["session_id"])["state"], "ended")
+
         asyncio.run(check())
 
     def test_live_tutor_provider_success(self):
@@ -244,19 +261,23 @@ class AdapterContractTests(unittest.TestCase):
 
     def test_voice_provider_timeout_is_typed(self):
         dialogue = SlowDialogue()
-        voice = VoiceAdapter(RuntimeConfig(Mode.LIVE, 0.02), dialogue=dialogue,
-                             tts=FakeTTS(), transport_issuer=FakeVoiceIssuer())
+        voice = VoiceAdapter(
+            RuntimeConfig(Mode.LIVE, 0.02),
+            dialogue=dialogue,
+            tts=FakeTTS(),
+            transport_issuer=FakeVoiceIssuer(),
+        )
         sid = asyncio.run(voice.create_session("u1"))["session_id"]
         with self.assertRaises(AdapterError) as raised:
             asyncio.run(voice.submit_text(sid, "Hello"))
         self.assertEqual(raised.exception.code, "voice_timeout")
+
     def test_tutor_rejects_unsafe_board_events(self):
         tutor = TutorAdapter(RuntimeConfig(Mode.LIVE, 0.2), InvalidBoardProvider())
         sid = tutor.start_session("u1", "fractions")["session_id"]
         with self.assertRaises(AdapterError) as raised:
             asyncio.run(tutor.send_turn(sid, "Explain"))
         self.assertEqual(raised.exception.code, "invalid_board_events")
-
 
     def test_tutor_provider_timeout_is_typed(self):
         tutor = TutorAdapter(RuntimeConfig(Mode.LIVE, 0.02), SlowTutorProvider())
@@ -275,21 +296,24 @@ class AdapterContractTests(unittest.TestCase):
             asyncio.run(adapter.execute(sid, plan["plan_id"], Mode.LIVE))
         self.assertEqual(raised.exception.code, "desktop_timeout")
         self.assertEqual(adapter.status(sid)["state"], "failed")
+
     def test_provider_timeout_maps_to_typed_safe_error(self):
         async def slow():
             await asyncio.sleep(2)
+
         async def check():
             with self.assertRaises(AdapterError) as raised:
                 await run_bounded(slow(), 0.02, "voice")
             self.assertEqual(raised.exception.code, "voice_timeout")
             self.assertEqual(raised.exception.http_status, 504)
-        asyncio.run(check())
 
+        asyncio.run(check())
 
     def test_tutor_cancel_endpoint_cancels_in_flight_provider(self):
         provider = SlowTutorProvider()
         tutor = TutorAdapter(RuntimeConfig(Mode.LIVE, 10), provider)
         sid = tutor.start_session("u1", "fractions")["session_id"]
+
         async def check():
             task = asyncio.create_task(tutor.send_turn(sid, "Help"))
             await asyncio.wait_for(provider.started.wait(), 1)
@@ -297,6 +321,7 @@ class AdapterContractTests(unittest.TestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
             self.assertTrue(provider.cancelled)
+
         asyncio.run(check())
         self.assertEqual(tutor._get(sid).state, "cancelled")
 
@@ -306,6 +331,7 @@ class AdapterContractTests(unittest.TestCase):
         sid = adapter.create_session("u1", ["preview", "execute"], "v1", True)["session_id"]
         plan = adapter.preview(sid, "open calculator")["actions"][0]
         adapter.approve(sid, plan["plan_id"], plan["plan_hash"], True)
+
         async def check():
             task = asyncio.create_task(adapter.execute(sid, plan["plan_id"], Mode.LIVE))
             await asyncio.wait_for(executor.started.wait(), 1)
@@ -313,12 +339,20 @@ class AdapterContractTests(unittest.TestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
             self.assertTrue(executor.cancelled)
+
         asyncio.run(check())
         self.assertEqual(adapter.status(sid)["state"], "cancelled")
+
     def test_provider_cancellation_propagates_and_session_cancel_is_explicit(self):
         dialogue = SlowDialogue()
-        voice = VoiceAdapter(RuntimeConfig(Mode.LIVE, 10), dialogue=dialogue, tts=FakeTTS(), transport_issuer=FakeVoiceIssuer())
+        voice = VoiceAdapter(
+            RuntimeConfig(Mode.LIVE, 10),
+            dialogue=dialogue,
+            tts=FakeTTS(),
+            transport_issuer=FakeVoiceIssuer(),
+        )
         sid = asyncio.run(voice.create_session("u1"))["session_id"]
+
         async def check():
             task = asyncio.create_task(voice.submit_text(sid, "Hello"))
             await asyncio.wait_for(dialogue.started.wait(), 1)
@@ -326,6 +360,7 @@ class AdapterContractTests(unittest.TestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
             self.assertTrue(dialogue.cancelled)
+
         asyncio.run(check())
         self.assertEqual(voice.status(sid)["state"], "cancelled")
         with self.assertRaises(AdapterError):

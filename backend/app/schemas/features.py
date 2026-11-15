@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CareerRequest(BaseModel):
@@ -10,6 +10,19 @@ class CareerRequest(BaseModel):
     skills: list[str] = Field(default_factory=list, max_length=50)
     constraints: list[str] | None = Field(default=None, max_length=20)
     consent: bool = False
+
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def normalize_constraints(cls, value: object) -> object:
+        # Keep the internal contract as list[str] while accepting the earlier UI object shape.
+        if isinstance(value, dict):
+            if len(value) > 20 or any(
+                not isinstance(key, str) or not isinstance(item, str)
+                for key, item in value.items()
+            ):
+                raise ValueError("constraints must contain at most 20 string key/value pairs")
+            return [f"{key}: {item}" for key, item in value.items()]
+        return value
 
 
 class CareerItem(BaseModel):

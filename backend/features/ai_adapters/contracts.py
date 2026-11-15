@@ -1,8 +1,8 @@
 """Stable stdlib typed request/response schemas for Phase 1 adapter endpoints."""
+
 from __future__ import annotations
 
 from typing import NotRequired, TypedDict
-
 
 API_PREFIX = "/api/v1"
 FEATURE_PATHS = {

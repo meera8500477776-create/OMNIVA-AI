@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
 from app.schemas.common import UserPublic
 
@@ -6,7 +6,11 @@ from app.schemas.common import UserPublic
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12, max_length=128)
-    display_name: str = Field(min_length=1, max_length=120)
+    display_name: str = Field(
+        min_length=1,
+        max_length=120,
+        validation_alias=AliasChoices("display_name", "name"),
+    )
 
 
 class LoginRequest(BaseModel):

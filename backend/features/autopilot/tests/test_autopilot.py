@@ -564,7 +564,9 @@ def test_live_planning_timeout_is_mapped_to_stable_error():
     async def run():
         service = AutopilotService(planner=SlowPlanner(), planning_timeout=0.001)
         with pytest.raises(ProviderTimeout):
-            await service.create_plan(PlanRequest(request="Find example internships", demo=False), "u")
+            await service.create_plan(
+                PlanRequest(request="Find example internships", demo=False), "u"
+            )
 
     asyncio.run(run())
 

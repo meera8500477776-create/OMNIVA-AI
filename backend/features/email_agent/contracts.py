@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+
 class Category(StrEnum):
     IMPORTANT = "important"
     URGENT = "urgent"
@@ -8,11 +9,13 @@ class Category(StrEnum):
     PROMOTIONS = "promotions"
     SPAM_SUSPECTED = "spam-suspected"
 
+
 class Tone(StrEnum):
     PROFESSIONAL = "professional"
     FRIENDLY = "friendly"
     CONCISE = "concise"
     FORMAL = "formal"
+
 
 @dataclass(frozen=True)
 class Email:
@@ -23,6 +26,7 @@ class Email:
     unread: bool = True
     thread_id: str | None = None
 
+
 @dataclass(frozen=True)
 class EmailView:
     email: Email
@@ -31,6 +35,7 @@ class EmailView:
     injection_suspected: bool = False
     suggested_actions: tuple[str, ...] = field(default_factory=tuple)
 
+
 @dataclass(frozen=True)
 class Draft:
     email_id: str
@@ -38,6 +43,14 @@ class Draft:
     tone: Tone
     demo: bool
 
-class ProviderUnavailable(RuntimeError): pass
-class ApprovalRequired(PermissionError): pass
-class DuplicateSend(RuntimeError): pass
+
+class ProviderUnavailable(RuntimeError):
+    pass
+
+
+class ApprovalRequired(PermissionError):
+    pass
+
+
+class DuplicateSend(RuntimeError):
+    pass

@@ -23,7 +23,7 @@ def api():
 
 @pytest.fixture
 def learner(api):
-    email = f'qa-{uuid.uuid4().hex}@example.test'
+    email = f'qa-{uuid.uuid4().hex}@example.com'
     response = api.post('/api/v1/auth/register', json={
         'email': email, 'password': 'qa-only-correct-horse-123', 'display_name': 'QA Smoke Learner',
     })
@@ -40,7 +40,7 @@ def test_liveness_readiness_and_security_headers(api):
 
 
 def test_authentication_refresh_rotation_and_logout(api):
-    email = f'qa-auth-{uuid.uuid4().hex}@example.test'
+    email = f'qa-auth-{uuid.uuid4().hex}@example.com'
     created = api.post('/api/v1/auth/register', json={
         'email': email, 'password': 'qa-only-correct-horse-123', 'display_name': 'QA Auth',
     })
@@ -65,7 +65,7 @@ def test_auth_required_and_password_reset_misuse(api, learner):
     assert api.get('/api/v1/me/progress').status_code == 401
     assert api.get('/api/v1/dashboard').status_code == 401
     unknown = api.post('/api/v1/auth/password/forgot', json={
-        'email': f'unknown-{uuid.uuid4().hex}@example.test',
+        'email': f'unknown-{uuid.uuid4().hex}@example.com',
     })
     known = api.post('/api/v1/auth/password/forgot', json={'email': learner[1]})
     assert unknown.status_code == known.status_code == 202
@@ -73,7 +73,11 @@ def test_auth_required_and_password_reset_misuse(api, learner):
     invalid = api.post('/api/v1/auth/password/reset', json={
         'token': 'not-a-reset-token', 'new_password': 'another-safe-pass-123',
     })
-    assert invalid.status_code == 400
+    assert invalid.status_code == 422, 'malformed reset-token shape must fail request validation'
+    unknown = api.post('/api/v1/auth/password/reset', json={
+        'token': 'x' * 43, 'new_password': 'another-safe-pass-123',
+    })
+    assert unknown.status_code == 400, 'well-formed but unknown reset tokens must be rejected'
 
 
 def test_courses_enrollment_lesson_quiz_progress_and_dashboard(api, learner):
