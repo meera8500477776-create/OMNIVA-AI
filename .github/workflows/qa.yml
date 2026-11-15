@@ -1,0 +1,181 @@
+name: OMNIVA QA
+on:
+  pull_request:
+  push:
+    branches: [main, feat/integration-qa-deploy]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.out.outputs.frontend }}
+      backend: ${{ steps.out.outputs.backend }}
+      adapters: ${{ steps.out.outputs.adapters }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - id: out
+        run: |
+          test -f frontend/package.json && echo frontend=true >> "$GITHUB_OUTPUT" || echo frontend=false >> "$GITHUB_OUTPUT"
+          test -f backend/pyproject.toml && echo backend=true >> "$GITHUB_OUTPUT" || echo backend=false >> "$GITHUB_OUTPUT"
+          test -d backend/features/ai_adapters && echo adapters=true >> "$GITHUB_OUTPUT" || echo adapters=false >> "$GITHUB_OUTPUT"
+  frontend:
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '26.13.0'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2
+        with:
+          version: 11.25.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm lint
+        working-directory: frontend
+      - run: pnpm exec tsc -b --pretty false
+        working-directory: frontend
+      - run: pnpm test
+        working-directory: frontend
+      - run: pnpm build
+        working-directory: frontend
+      - run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
+        working-directory: qa/browser
+      - name: Browser E2E
+        env:
+          OMNIVA_FRONTEND_DIR: ${{ github.workspace }}/frontend
+          VITE_APP_MODE: demo
+          CI: true
+        run: pnpm exec playwright test --reporter=line,junit
+        working-directory: qa/browser
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: frontend-browser-reports
+          path: |
+            frontend/coverage
+            qa/browser/test-results
+            qa/browser/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+  backend:
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: omniva_qa
+          POSTGRES_USER: omniva
+          POSTGRES_PASSWORD: qa_only_disposable
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U omniva -d omniva_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      APP_ENV: test
+      APP_MODE: demo
+      SECRET_KEY: qa-only-not-a-production-secret-32chars
+      DATABASE_URL: postgresql+psycopg://omniva:qa_only_disposable@localhost:5432/omniva_qa
+      CORS_ORIGINS: http://127.0.0.1:5173
+      SMTP_HOST: ''
+      EMAIL_FROM: ''
+      OMNIVA_API_BASE_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+          cache: uv
+          cache-dependency-path: backend/uv.lock
+      - uses: astral-sh/setup-uv@e92bafb625e3c0a3da646bd9c8f82d9777aa67d3
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen --extra test --extra lint
+        working-directory: backend
+      - run: uv run ruff check app tests && uv run ruff format --check app tests
+        working-directory: backend
+      - run: uv run alembic upgrade head && uv run alembic check
+        working-directory: backend
+      - run: uv run python -m app.seed && mkdir -p ../work/qa-results && uv run pytest tests -q --junitxml=../work/qa-results/backend-junit.xml
+        working-directory: backend
+      - name: API smoke
+        run: |
+          mkdir -p work/qa-results
+          (cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../work/qa-results/api.log 2>&1 & echo $! > work/qa-results/api.pid)
+          trap 'kill "$(cat work/qa-results/api.pid)" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do curl --fail --silent http://127.0.0.1:8000/health/live >/dev/null && break; sleep 1; done
+          curl --fail --silent http://127.0.0.1:8000/health/live >/dev/null
+          python qa/api/check_openapi.py
+          cd backend && uv run pytest ../qa/api/tests -q --junitxml=../work/qa-results/api-smoke-junit.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: backend-reports
+          path: work/qa-results
+          if-no-files-found: ignore
+          retention-days: 14
+  ai-adapters:
+    needs: detect
+    if: needs.detect.outputs.adapters == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+      - name: Adapter unit tests without providers
+        env:
+          PYTHONPATH: backend
+          OMNIVA_FEATURES_MODE: demo
+          OMNIVA_DESKTOP_REAL_EXECUTION_APPROVED: 'false'
+        run: python -m unittest discover -s backend/tests/features -v
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2.3.9
+      - name: Python dependency audit
+        run: |
+          if test -f backend/pyproject.toml; then
+            python -m pip install --disable-pip-version-check pip-audit
+            pip-audit --strict -r <(python -c "import tomllib;print('\n'.join(tomllib.load(open('backend/pyproject.toml','rb'))['project'].get('dependencies',[])))")
+          else echo 'SKIP: backend manifest absent'; fi
+      - name: Frontend dependency audit
+        run: |
+          if test -f frontend/pnpm-lock.yaml; then
+            corepack enable && corepack prepare pnpm@11.25.0 --activate
+            cd frontend && pnpm audit --prod --audit-level high
+          else echo 'SKIP: frontend lockfile absent'; fi
+  summary:
+    if: always()
+    needs: [detect, frontend, backend, ai-adapters, security]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          FRONTEND: ${{ needs.detect.outputs.frontend }}
+          BACKEND: ${{ needs.detect.outputs.backend }}
+          ADAPTERS: ${{ needs.detect.outputs.adapters }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          ADAPTER_RESULT: ${{ needs.ai-adapters.result }}
+        run: |
+          echo '## Source availability' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend: $FRONTEND; job $FRONTEND_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend: $BACKEND; job $BACKEND_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- AI adapters: $ADAPTERS; job $ADAPTER_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FRONTEND" != true ] || [ "$BACKEND" != true ] || [ "$ADAPTERS" != true ]; then
+            echo 'Missing implementation suites were SKIPPED, not passed. Merge approved application source before treating this as a complete gate.' >> "$GITHUB_STEP_SUMMARY"
+          fi
