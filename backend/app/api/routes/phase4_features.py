@@ -8,14 +8,18 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
+from app.api.routes.features import gemini, provider_error
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
 from app.db.models import CareReminder
 from app.db.session import get_session
+from features.ai_adapters.gemini import GeminiError
+from features.ai_adapters.gemini_features import GeminiCompanion
 from features.care_companion.contracts import PersonaId
 from features.care_companion.conversation import Conversation
 from features.care_companion.memory import ConsentMemory
 from features.care_companion.personas import PERSONAS
+from features.care_companion.voice_adapter import VoiceProviderSet
 from features.email_agent.contracts import (
     ApprovalRequired,
     DuplicateSend,
@@ -85,8 +89,16 @@ class EmailState:
 
 
 class CompanionState:
-    def __init__(self) -> None:
-        self.conversation = Conversation(demo=True)
+    def __init__(self, user_id: str) -> None:
+        live = settings.app_mode == "real"
+        providers = VoiceProviderSet(
+            llm=GeminiCompanion(gemini, user_id) if live and gemini.configured else None
+        )
+        self.conversation = Conversation(
+            demo=not live,
+            providers=providers,
+            timeout=settings.gemini_timeout_seconds,
+        )
         self.memory = ConsentMemory()
 
 
@@ -99,11 +111,12 @@ def email_state(user_id: str) -> EmailState:
 
 
 def companion_state(user_id: str) -> CompanionState:
-    return companion_states.setdefault(user_id, CompanionState())
+    if user_id not in companion_states:
+        companion_states[user_id] = CompanionState(user_id)
+    return companion_states[user_id]
 
 
 def state_for_session(user_id: str, session_id: str) -> CompanionState:
-    ensure_demo()
     state = companion_states.get(user_id)
     if state is None or session_id not in state.conversation.sessions:
         raise HTTPException(
@@ -198,7 +211,6 @@ def email_activity(user: CurrentUser):
 
 @router.get("/care-companion/personas")
 def companion_personas(user: CurrentUser):
-    ensure_demo()
     return {
         "items": [
             {
@@ -209,17 +221,18 @@ def companion_personas(user: CurrentUser):
             }
             for persona, details in PERSONAS.items()
         ],
-        "demo": True,
+        "demo": settings.app_mode == "demo",
     }
 
 
 @router.post("/care-companion/sessions", status_code=201)
 async def start_companion(payload: CompanionStartRequest, user: CurrentUser):
-    ensure_demo()
     if not payload.consent:
         raise HTTPException(
             status_code=403, detail={"code": "consent_required", "message": "Consent is required"}
         )
+    if settings.app_mode == "real" and not gemini.configured:
+        raise HTTPException(status_code=503, detail={"code": "provider_unavailable", "message": "Gemini is not configured"})
     try:
         session = await companion_state(str(user.id)).conversation.start(
             payload.persona, payload.locale
@@ -245,10 +258,15 @@ def get_companion_session(session_id: str, user: CurrentUser):
 @router.post("/care-companion/sessions/{session_id}/turns")
 async def companion_turn(session_id: str, payload: CompanionTurnRequest, user: CurrentUser):
     state = state_for_session(str(user.id), session_id)
-    answer = await state.conversation.reply(session_id, payload.text)
+    try:
+        answer = await state.conversation.reply(session_id, payload.text)
+    except GeminiError as exc:
+        raise provider_error(exc) from None
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail={"code": "care_companion_timeout", "message": "Care Companion request timed out"}) from None
     return {
         "answer": answer,
-        "demo": True,
+        "demo": state.conversation.sessions[session_id].demo,
         "ai_identity": True,
         "transcript": state.conversation.transcripts[session_id],
     }

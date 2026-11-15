@@ -112,8 +112,8 @@ test.describe('five AI feature pages are deterministic and provider-offline', ()
     const secureRequests: string[] = [];
     page.on('request', request => { if (request.url().startsWith('https://')) secureRequests.push(request.url()); });
     await page.goto('/voice-assistant');
-    await page.getByRole('button', { name: /start text demo/i }).click();
-    await expect(page.getByText(/no call, microphone or AI provider is used/i)).toBeVisible();
+    await page.getByRole('button', { name: /start text assistant/i }).click();
+    await expect(page.getByText(/text demo only\. no provider or microphone is used/i)).toBeVisible();
     await page.getByRole('textbox', { name: /message your voice assistant/i }).fill('Help me review today.');
     await page.getByRole('button', { name: /send message/i }).click();
     await expect(page.getByText(/one step at a time/i)).toBeVisible();

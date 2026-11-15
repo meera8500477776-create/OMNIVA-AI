@@ -277,7 +277,7 @@ def test_autopilot_internship_workflow_stops_at_approval_and_is_user_bound(clien
     assert any("simulated" in str(step["result"]).lower() for step in snapshot["steps"])
 
 
-def test_demo_adapters_fail_closed_when_application_is_live(client, monkeypatch):
+def test_live_mode_keeps_external_demo_services_off_and_allows_static_content(client, monkeypatch):
     from app.core.config import settings
 
     user = create_user(client)
@@ -292,4 +292,6 @@ def test_demo_adapters_fail_closed_when_application_is_live(client, monkeypatch)
         json={"request": "Help me find internships", "demo": True},
     )
 
-    assert email.status_code == care.status_code == autopilot.status_code == 503
+    assert email.status_code == 503
+    assert care.status_code == 200 and care.json()["demo"] is False
+    assert autopilot.status_code == 200 and autopilot.json()["demo"] is True

@@ -1,11 +1,11 @@
-import { api } from './lib/api'
+import { api, appMode } from './lib/api'
 import { CareCompanionPanel } from './features/care-companion/CareCompanionPanel'
 import { EmailAgentPanel } from './features/email-agent/EmailAgentPanel'
 import { AutopilotDashboard, type AutopilotApi } from './features/autopilot/AutopilotDashboard'
 import './features/autopilot/autopilot.css'
 
 const autopilotApi: AutopilotApi = {
-  plan: request => api('/autopilot/plans', { method: 'POST', body: JSON.stringify({ request }) }),
+  plan: request => api('/autopilot/plans', { method: 'POST', body: JSON.stringify({ request, demo: appMode === 'demo' }) }),
   get: id => api(`/autopilot/workflows/${id}`),
   createWorkflow: planId => api('/autopilot/workflows', { method: 'POST', body: JSON.stringify({ plan_id: planId }) }),
   start: id => api(`/autopilot/workflows/${id}/start`, { method: 'POST' }),
@@ -25,4 +25,4 @@ const autopilotApi: AutopilotApi = {
 
 export function CareCompanionPage() { return <div className="content-page"><CareCompanionPanel /></div> }
 export function EmailAgentPage() { return <div className="content-page"><EmailAgentPanel /></div> }
-export function AutopilotPage() { return <div className="content-page"><AutopilotDashboard api={autopilotApi} mode="demo" /></div> }
+export function AutopilotPage() { return <div className="content-page"><AutopilotDashboard api={autopilotApi} mode={appMode === 'demo' ? 'demo' : 'live'} /></div> }

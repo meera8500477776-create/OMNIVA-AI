@@ -18,11 +18,17 @@ REQUIRED = {
     '/api/v1/features/tutor/sessions': {'post'},
     '/api/v1/features/tutor/sessions/{session_id}/turns': {'post'},
     '/api/v1/features/voice/sessions': {'post'}, '/api/v1/features/avatar/sessions': {'post'},
+    '/api/v1/features/voice/sessions/{session_id}/turns': {'post'},
     '/api/v1/features/desktop/sessions': {'post'},
+    '/api/v1/features/care-companion/personas': {'get'},
+    '/api/v1/features/care-companion/sessions': {'post'},
+    '/api/v1/features/care-companion/sessions/{session_id}/turns': {'post'},
     '/api/v1/features/email-agent/inbox': {'get'},
     '/api/v1/features/care-companion/reminders': {'get', 'post'},
     '/api/v1/features/care-companion/reminders/{reminder_id}/acknowledge': {'post'},
     '/api/v1/autopilot/plans': {'post'},
+    '/api/v1/autopilot/history': {'get'},
+    '/api/v1/autopilot/workflows/{workflow_id}/browser-evidence': {'get'},
 }
 
 

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: SecretStr | None = None
     email_from: str | None = None
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_timeout_seconds: float = 15.0
+    gemini_max_requests_per_minute: int = 20
+    gemini_max_requests_per_day: int = 100
 
     @field_validator("cors_origins", mode="before")
     @classmethod

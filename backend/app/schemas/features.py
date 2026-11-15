@@ -29,7 +29,7 @@ class CareerItem(BaseModel):
     domain: str
     role: str
     specialization: str
-    match_score: float
+    match_score: float = Field(ge=0, le=100)
     rationale: list[str]
     skill_gaps: list[str]
     roadmap: list[str]

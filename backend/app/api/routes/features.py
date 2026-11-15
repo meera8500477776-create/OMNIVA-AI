@@ -1,14 +1,14 @@
 import hashlib
 import json
+import logging
 import secrets
-from datetime import UTC, datetime
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from app.adapters.base import ProviderUnavailable
-from app.adapters.demo import session_payload
 from app.api.deps import CurrentUser, SessionDep
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
@@ -32,6 +32,16 @@ from app.schemas.features import (
     TutorTurnResponse,
     VoiceSessionRequest,
 )
+from features.ai_adapters.gemini import GeminiError, GeminiProvider
+
+logger = logging.getLogger("omniva.features")
+gemini = GeminiProvider(
+    settings.gemini_api_key,
+    model=settings.gemini_model,
+    timeout=settings.gemini_timeout_seconds,
+    max_requests_per_minute=settings.gemini_max_requests_per_minute,
+    max_requests_per_day=settings.gemini_max_requests_per_day,
+)
 
 router = APIRouter(prefix="/features", tags=["feature adapters"])
 DESKTOP_CAPABILITIES = {"open_course", "read_lesson", "summarize_progress"}
@@ -49,9 +59,17 @@ def unavailable() -> HTTPException:
     )
 
 
+def provider_error(exc: GeminiError) -> HTTPException:
+    logger.info("feature_provider_error code=%s", exc.code)
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
 def save_session(session, payload: dict) -> FeatureSession:
-    if settings.app_mode != "demo":
-        raise ProviderUnavailable("No real provider adapter is configured")
+    is_demo = settings.app_mode == "demo"
+    payload = {**payload, "demo": is_demo, "state": "simulated" if is_demo else "active"}
     record = FeatureSession(**payload)
     session.add(record)
     session.flush()
@@ -66,6 +84,17 @@ def save_session(session, payload: dict) -> FeatureSession:
     session.commit()
     session.refresh(record)
     return record
+
+
+def session_payload(feature: str, user_id: UUID, metadata: dict, consent: str | None = None) -> dict:
+    return {
+        "id": uuid4(),
+        "user_id": user_id,
+        "feature": feature,
+        "consent_version": consent,
+        "metadata_json": json.dumps(metadata, separators=(",", ":")),
+        "expires_at": datetime.now(UTC) + timedelta(hours=1),
+    }
 
 
 def session_response(record: FeatureSession, **extra) -> FeatureSessionResponse:
@@ -83,7 +112,7 @@ def session_response(record: FeatureSession, **extra) -> FeatureSessionResponse:
     response_model=CareerResponse,
     dependencies=[Depends(enforce_rate_limit)],
 )
-def career(
+async def career(
     payload: CareerRequest, current_user: CurrentUser, session: SessionDep
 ) -> CareerResponse:
     if not payload.consent:
@@ -94,8 +123,6 @@ def career(
                 "message": "Consent is required to process career profile data",
             },
         )
-    if settings.app_mode != "demo":
-        raise unavailable()
     interests = [item.strip() for item in payload.interests if item.strip()]
     skills = {skill.strip().casefold() for skill in payload.skills if skill.strip()}
     if not interests:
@@ -103,8 +130,9 @@ def career(
             status_code=422,
             detail={"code": "invalid_interests", "message": "At least one interest is required"},
         )
-    interest = interests[0][:80]
-    result = CareerResponse(
+    if settings.app_mode == "demo":
+        interest = interests[0][:80]
+        result = CareerResponse(
         recommendations=[
             CareerItem(
                 domain=interest,
@@ -127,8 +155,46 @@ def career(
             DISCLAIMER,
             "Scores are fixed demonstration values and should not be interpreted as suitability probabilities.",
         ],
-        demo=True,
-    )
+            demo=True,
+        )
+    else:
+        prompt = {
+            "education_level": payload.education_level,
+            "interests": interests,
+            "skills": sorted(skills),
+            "constraints": payload.constraints or [],
+        }
+        try:
+            raw = await gemini.generate(
+                feature="career_guidance",
+                user_id=str(current_user.id),
+                system=(
+                    "Give concise, illustrative career-learning guidance, not hiring or salary predictions. "
+                    "Return JSON with recommendations: 1-4 objects having domain, role, specialization, "
+                    "match_score (0-100 as a non-probability fit indicator), rationale (strings), skill_gaps, "
+                    "roadmap (3-6 practical steps). Use user constraints."
+                ),
+                messages=[{"role": "user", "text": json.dumps(prompt)}],
+                json_mode=True,
+            )
+            data = json.loads(raw)
+            if not isinstance(data.get("recommendations"), list) or not 1 <= len(data["recommendations"]) <= 4:
+                raise ValueError
+            result = CareerResponse(
+                recommendations=data["recommendations"],
+                taxonomy_version="gemini-guidance-v1",
+                model_version=settings.gemini_model,
+                generated_at=datetime.now(UTC),
+                limitations=[DISCLAIMER, "AI-generated suggestions are not probabilities or guarantees."],
+                demo=False,
+            )
+        except GeminiError as exc:
+            raise provider_error(exc) from None
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "invalid_provider_output", "message": "Career provider returned an invalid response"},
+            ) from None
     session.add(
         CareerRecommendation(
             user_id=current_user.id,
@@ -165,6 +231,8 @@ def tutor_session(
                 "message": "Consent is required to start a tutor session",
             },
         )
+    if settings.app_mode == "real" and not gemini.configured:
+        raise unavailable()
     if payload.course_id:
         course = session.get(Course, payload.course_id)
         enrollment = session.exec(
@@ -201,7 +269,7 @@ def tutor_session(
     response_model=TutorTurnResponse,
     dependencies=[Depends(enforce_rate_limit)],
 )
-def tutor_turn(
+async def tutor_turn(
     session_id: UUID, payload: TutorTurnRequest, current_user: CurrentUser, session: SessionDep
 ) -> TutorTurnResponse:
     record = session.get(FeatureSession, session_id)
@@ -215,11 +283,30 @@ def tutor_turn(
             status_code=422,
             detail={"code": "input_required", "message": "Provide text or an audio reference"},
         )
-    if settings.app_mode != "demo":
-        raise unavailable()
+    if payload.audio_ref:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "speech_input_unavailable", "message": "Tutor speech recognition is not configured in Phase 7A"},
+        )
     topic = json.loads(record.metadata_json).get("topic", "your topic")
     question = (payload.text or "your question").strip()
-    answer = f"[DEMO] Let's explore {topic}. You asked: {question[:200]}. Start by identifying the key idea, then try one example."
+    if record.demo:
+        answer = f"[DEMO] Let's explore {topic}. You asked: {question[:200]}. Start by identifying the key idea, then try one example."
+    else:
+        history = session.exec(
+            select(TutorMessage).where(TutorMessage.session_id == record.id).order_by(TutorMessage.created_at)
+        ).all()
+        messages = [{"role": item.role, "text": item.body} for item in history[-12:]]
+        messages.append({"role": "user", "text": question})
+        try:
+            answer = await gemini.generate(
+                feature="tutor",
+                user_id=str(current_user.id),
+                system=f"You are an encouraging AI tutor teaching {topic}. Explain step by step and ask a useful follow-up question. Never just give a test answer without teaching.",
+                messages=messages,
+            )
+        except GeminiError as exc:
+            raise provider_error(exc) from None
     session.add(TutorMessage(session_id=record.id, role="user", body=question[:5000]))
     session.add(TutorMessage(session_id=record.id, role="assistant", body=answer))
     session.add(
@@ -235,7 +322,7 @@ def tutor_turn(
         answer=answer,
         speech_ref=None,
         board_events=[{"type": "text", "text": f"Demo whiteboard: {topic}"}],
-        demo=True,
+        demo=record.demo,
     )
 
 
@@ -256,6 +343,8 @@ def voice_session(
                 "message": "Consent is required to start a voice session",
             },
         )
+    if settings.app_mode == "real" and not gemini.configured:
+        raise unavailable()
     try:
         record = save_session(
             session,
@@ -268,7 +357,41 @@ def voice_session(
         )
     except ProviderUnavailable:
         raise unavailable() from None
-    return session_response(record, transport="local-demo" if record.demo else None, token=None)
+    return session_response(record, transport="local-demo" if record.demo else "text-gemini", token=None)
+
+
+@router.post(
+    "/voice/sessions/{session_id}/turns",
+    dependencies=[Depends(enforce_rate_limit)],
+)
+async def voice_turn(session_id: UUID, payload: TutorTurnRequest, current_user: CurrentUser, session: SessionDep):
+    record = session.get(FeatureSession, session_id)
+    if record is None or record.user_id != current_user.id or record.feature != "voice":
+        raise HTTPException(status_code=404, detail={"code": "session_not_found", "message": "Voice session not found"})
+    text = (payload.text or "").strip()
+    if not text or payload.audio_ref:
+        raise HTTPException(status_code=422, detail={"code": "text_required", "message": "Phase 7A voice supports text turns; live speech is a later phase"})
+    metadata = json.loads(record.metadata_json)
+    history = session.exec(
+        select(TutorMessage).where(TutorMessage.session_id == record.id).order_by(TutorMessage.created_at)
+    ).all()
+    if record.demo:
+        answer = "That’s a good question. Let’s take it one step at a time. What part feels most important to understand first?"
+    else:
+        try:
+            answer = await gemini.generate(
+                feature="voice_assistant",
+                user_id=str(current_user.id),
+                system=f"You are an AI voice assistant for learning. Reply in locale {metadata.get('locale', 'en')}; keep it natural, concise, and clear.",
+                messages=[*({"role": item.role, "text": item.body} for item in history[-12:]), {"role": "user", "text": text}],
+            )
+        except GeminiError as exc:
+            raise provider_error(exc) from None
+    session.add(TutorMessage(session_id=record.id, role="user", body=text[:5000]))
+    session.add(TutorMessage(session_id=record.id, role="assistant", body=answer[:5000]))
+    session.add(AuditEvent(actor_id=current_user.id, action="feature.voice.turn", resource_type="feature_session", resource_id=str(record.id)))
+    session.commit()
+    return {"answer": answer, "demo": record.demo, "audio_ref": None, "mode": "text"}
 
 
 @router.post(

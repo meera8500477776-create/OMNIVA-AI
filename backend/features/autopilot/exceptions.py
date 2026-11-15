@@ -40,3 +40,13 @@ class ApprovalRequired(AutopilotError):
 class ProviderTimeout(AutopilotError):
     code = "provider_timeout"
     status_code = 504
+
+
+class ProviderRateLimited(AutopilotError):
+    code = "usage_limit"
+    status_code = 429
+
+
+class ProviderFailure(AutopilotError):
+    code = "provider_error"
+    status_code = 502

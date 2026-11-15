@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,10 +14,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.deps import get_current_user
 from app.api.routes import auth, dashboard, features, health, learning, phase4_features, users
+from app.api.routes.features import gemini
 from app.core.config import settings
 from app.core.rate_limit import enforce_rate_limit
 from app.db.models import CareReminder
 from app.db.session import Session, engine
+from features.ai_adapters.gemini_features import GeminiWorkflowPlanner
 from features.autopilot.router import create_autopilot_router
 from features.autopilot.service import AutopilotService
 
@@ -85,15 +87,7 @@ async def stop_reminder_scheduler() -> None:
             pass
 
 
-autopilot_service = AutopilotService()
-
-
-def require_demo_mode() -> None:
-    if settings.app_mode != "demo":
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "provider_unavailable", "message": "Live provider is not configured"},
-        )
+autopilot_service = AutopilotService(planner=GeminiWorkflowPlanner(gemini))
 
 
 app.add_middleware(
@@ -224,5 +218,5 @@ app.include_router(phase4_features.router, prefix="/api/v1")
 app.include_router(
     create_autopilot_router(autopilot_service, get_current_user),
     prefix="/api/v1",
-    dependencies=[Depends(enforce_rate_limit), Depends(require_demo_mode)],
+    dependencies=[Depends(enforce_rate_limit)],
 )
