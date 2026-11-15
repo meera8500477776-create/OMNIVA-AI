@@ -1,0 +1,12 @@
+{
+  "case": "fixed-v1",
+  "account": {"email": "demo@omniva.ai", "display_name": "Avery Morgan"},
+  "course_slug": "python-foundations",
+  "features": ["career", "tutor", "voice", "avatar", "desktop"],
+  "safety": {
+    "external_provider_calls": false,
+    "real_email_delivery": false,
+    "desktop_execution": false,
+    "microphone_capture": false
+  }
+}
