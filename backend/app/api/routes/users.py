@@ -6,7 +6,14 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.api.routes.auth import user_public
 from app.db.models import AuditEvent, Course, Lesson, Module, RoleName, User, UserRole
-from app.schemas.admin import CourseCreate, CoursePatch, LessonCreate, ModuleCreate
+from app.schemas.admin import (
+    CourseCreate,
+    CoursePatch,
+    LessonCreate,
+    LessonPatch,
+    ModuleCreate,
+    ModulePatch,
+)
 from app.schemas.auth import ProfileUpdate
 from app.schemas.common import UserPublic
 
@@ -226,3 +233,107 @@ def list_audit_events(
             for event in events
         ]
     }
+
+
+@router.patch("/admin/modules/{module_id}")
+def update_module(
+    module_id: UUID,
+    payload: ModulePatch,
+    session: SessionDep,
+    user: User = Depends(admin_only),
+) -> dict:
+    module = session.get(Module, module_id)
+    if module is None:
+        raise HTTPException(
+            status_code=404, detail={"code": "module_not_found", "message": "Module not found"}
+        )
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(module, key, value)
+    session.add(
+        AuditEvent(
+            actor_id=user.id,
+            action="course.module.update",
+            resource_type="module",
+            resource_id=str(module.id),
+        )
+    )
+    session.commit()
+    session.refresh(module)
+    return {
+        "id": module.id,
+        "course_id": module.course_id,
+        "title": module.title,
+        "position": module.position,
+    }
+
+
+@router.delete("/admin/modules/{module_id}", status_code=204)
+def delete_module(module_id: UUID, session: SessionDep, user: User = Depends(admin_only)) -> None:
+    module = session.get(Module, module_id)
+    if module is None:
+        raise HTTPException(
+            status_code=404, detail={"code": "module_not_found", "message": "Module not found"}
+        )
+    session.add(
+        AuditEvent(
+            actor_id=user.id,
+            action="course.module.delete",
+            resource_type="module",
+            resource_id=str(module.id),
+        )
+    )
+    session.delete(module)
+    session.commit()
+
+
+@router.patch("/admin/lessons/{lesson_id}")
+def update_lesson(
+    lesson_id: UUID,
+    payload: LessonPatch,
+    session: SessionDep,
+    user: User = Depends(admin_only),
+) -> dict:
+    lesson = session.get(Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(
+            status_code=404, detail={"code": "lesson_not_found", "message": "Lesson not found"}
+        )
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(lesson, key, value)
+    session.add(
+        AuditEvent(
+            actor_id=user.id,
+            action="course.lesson.update",
+            resource_type="lesson",
+            resource_id=str(lesson.id),
+        )
+    )
+    session.commit()
+    session.refresh(lesson)
+    return {
+        "id": lesson.id,
+        "module_id": lesson.module_id,
+        "title": lesson.title,
+        "content": lesson.content,
+        "duration_seconds": lesson.duration_seconds,
+        "position": lesson.position,
+    }
+
+
+@router.delete("/admin/lessons/{lesson_id}", status_code=204)
+def delete_lesson(lesson_id: UUID, session: SessionDep, user: User = Depends(admin_only)) -> None:
+    lesson = session.get(Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(
+            status_code=404, detail={"code": "lesson_not_found", "message": "Lesson not found"}
+        )
+    session.add(
+        AuditEvent(
+            actor_id=user.id,
+            action="course.lesson.delete",
+            resource_type="lesson",
+            resource_id=str(lesson.id),
+        )
+    )
+    session.delete(lesson)
+    session.commit()

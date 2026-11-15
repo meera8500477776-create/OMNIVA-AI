@@ -19,8 +19,20 @@ class ModuleCreate(BaseModel):
     position: int = Field(ge=0, le=10000)
 
 
+class ModulePatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    position: int | None = Field(default=None, ge=0, le=10000)
+
+
 class LessonCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=20000)
     duration_seconds: int = Field(default=0, ge=0, le=86400)
     position: int = Field(ge=0, le=10000)
+
+
+class LessonPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, max_length=20000)
+    duration_seconds: int | None = Field(default=None, ge=0, le=86400)
+    position: int | None = Field(default=None, ge=0, le=10000)

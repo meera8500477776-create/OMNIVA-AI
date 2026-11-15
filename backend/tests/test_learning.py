@@ -40,6 +40,7 @@ def test_courses_enrollment_and_progress(client):
     assert listed.status_code == 200 and len(listed.json()["items"]) == 1
     assert client.get(f"/api/v1/lessons/{lesson_id}", headers=headers).status_code == 404
     assert client.post(f"/api/v1/courses/{course_id}/enroll", headers=headers).status_code == 201
+    assert len(client.get("/api/v1/me/enrollments", headers=headers).json()["items"]) == 1
     updated = client.put(
         f"/api/v1/me/progress/{lesson_id}",
         headers=headers,
@@ -51,6 +52,7 @@ def test_courses_enrollment_and_progress(client):
         client.get("/api/v1/dashboard", headers=headers).json()["summary"]["completed_lessons"] == 1
     )
     assert client.get("/api/v1/dashboard/analytics", headers=headers).status_code == 200
+    assert client.delete(f"/api/v1/me/enrollments/{course_id}", headers=headers).status_code == 204
 
 
 def test_invalid_progress_and_unauthorized(client):
@@ -102,4 +104,24 @@ def test_admin_role_controls_catalog_crud(client):
         },
     )
     assert lesson.status_code == 201
+    patched_module = client.patch(
+        f"/api/v1/admin/modules/{module.json()['id']}",
+        headers=headers,
+        json={"title": "Updated Numbers"},
+    )
+    assert patched_module.status_code == 200
+    patched_lesson = client.patch(
+        f"/api/v1/admin/lessons/{lesson.json()['id']}",
+        headers=headers,
+        json={"title": "Counting to Ten"},
+    )
+    assert patched_lesson.status_code == 200
+    assert (
+        client.delete(f"/api/v1/admin/lessons/{lesson.json()['id']}", headers=headers).status_code
+        == 204
+    )
+    assert (
+        client.delete(f"/api/v1/admin/modules/{module.json()['id']}", headers=headers).status_code
+        == 204
+    )
     assert client.get("/api/v1/admin/audit-events", headers=headers).status_code == 200

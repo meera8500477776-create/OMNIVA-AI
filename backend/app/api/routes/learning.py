@@ -7,7 +7,15 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.db.models import Course, Enrollment, Lesson, LessonProgress, Module, QuizAttempt
+from app.db.models import (
+    AuditEvent,
+    Course,
+    Enrollment,
+    Lesson,
+    LessonProgress,
+    Module,
+    QuizAttempt,
+)
 from app.schemas.learning import (
     CourseOut,
     CoursePage,
@@ -254,3 +262,42 @@ def record_quiz_attempt(
         "score": attempt.score,
         "created_at": attempt.created_at.isoformat(),
     }
+
+
+@router.get("/me/enrollments")
+def list_enrollments(current_user: CurrentUser, session: SessionDep) -> dict:
+    enrollments = session.exec(
+        select(Enrollment)
+        .where(Enrollment.user_id == current_user.id)
+        .order_by(Enrollment.enrolled_at.desc())
+    ).all()
+    return {
+        "items": [
+            {"id": item.id, "course_id": item.course_id, "enrolled_at": item.enrolled_at}
+            for item in enrollments
+        ]
+    }
+
+
+@router.delete("/me/enrollments/{course_id}", status_code=204)
+def withdraw(course_id: UUID, current_user: CurrentUser, session: SessionDep) -> None:
+    enrollment = session.exec(
+        select(Enrollment)
+        .where(Enrollment.user_id == current_user.id, Enrollment.course_id == course_id)
+        .with_for_update()
+    ).first()
+    if enrollment is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "enrollment_not_found", "message": "Enrollment not found"},
+        )
+    session.add(
+        AuditEvent(
+            actor_id=current_user.id,
+            action="course.withdraw",
+            resource_type="enrollment",
+            resource_id=str(enrollment.id),
+        )
+    )
+    session.delete(enrollment)
+    session.commit()
