@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     email_from: str | None = None
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: float = 15.0
     gemini_max_requests_per_minute: int = 20
     gemini_max_requests_per_day: int = 100

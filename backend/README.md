@@ -15,7 +15,7 @@ Set a fresh `SECRET_KEY`, `DATABASE_URL`, `APP_ENV`, `CORS_ORIGINS`, and `APP_MO
 
 ## Gemini live mode (Phase 7A)
 
-Copy `backend/.env.example` to `backend/.env` and configure `APP_MODE=real` and `GEMINI_API_KEY` locally. Do not paste the key into chat or commit `.env`. `GEMINI_MODEL`, `GEMINI_TIMEOUT_SECONDS`, `GEMINI_MAX_REQUESTS_PER_MINUTE`, and `GEMINI_MAX_REQUESTS_PER_DAY` can be set there; defaults use Gemini 2.5 Flash, a 15-second timeout, and per-user request caps of 20/minute and 100/day. The adapter sends the key in the `x-goog-api-key` header, limits prompt/output size, retries transient failures, and logs only feature/status metadata.
+Copy `backend/.env.example` to `backend/.env` and configure `APP_MODE=real` and `GEMINI_API_KEY` locally. Do not paste the key into chat or commit `.env`. `GEMINI_MODEL`, `GEMINI_TIMEOUT_SECONDS`, `GEMINI_MAX_REQUESTS_PER_MINUTE`, and `GEMINI_MAX_REQUESTS_PER_DAY` can be set there; defaults use Gemini 3.5 Flash-Lite, a 15-second timeout, and per-user request caps of 20/minute and 100/day. The adapter sends the key in the `x-goog-api-key` header, limits prompt/output size, retries transient failures, and logs only feature/status metadata.
 
 Tutor, Career Guidance, Voice Assistant text turns, Care Companion conversations, and Autopilot planning use Gemini in real mode. Demo mode remains provider-free and returns labeled simulated results. Voice Assistant remains text-only until STT/TTS integration; Care Companion conversation history is retained within its active process session. AI request caps are process-local and require a shared limiter before multi-worker production deployment.
 

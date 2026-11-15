@@ -67,9 +67,11 @@ def test_invalid_feature_inputs_and_consent(client):
 
 
 def test_real_mode_never_silently_uses_demo(client, monkeypatch):
+    from app.api.routes import features
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "app_mode", "real")
+    monkeypatch.setattr(features.gemini, "_api_key", None)
     response = client.post(
         "/api/v1/features/voice/sessions",
         headers=auth(client),
@@ -77,3 +79,32 @@ def test_real_mode_never_silently_uses_demo(client, monkeypatch):
     )
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "provider_unavailable"
+
+
+def test_live_career_normalizes_gemini_top_level_recommendation_array(client, monkeypatch):
+    import asyncio
+
+    from app.api.routes import features
+    from app.core.config import settings
+
+    async def generate(**_kwargs):
+        return '[{"domain":"Design","role":"Accessibility designer","specialization":"Inclusive products","match_score":72,"rationale":"Builds on design interests","skill_gaps":["Accessibility testing"],"roadmap":["Study WCAG basics","Audit a page","Share findings"]}]'
+
+    monkeypatch.setattr(settings, "app_mode", "real")
+    monkeypatch.setattr(features.gemini, "_api_key", "unit-test-key")
+    monkeypatch.setattr(features.gemini, "generate", generate)
+    response = client.post(
+        "/api/v1/features/career/recommendations",
+        headers=auth(client),
+        json={
+            "education_level": "not_specified",
+            "interests": ["design"],
+            "skills": [],
+            "constraints": {"goal": "Explore accessible design"},
+            "consent": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["demo"] is False
+    assert response.json()["recommendations"][0]["role"] == "Accessibility designer"
+    assert response.json()["recommendations"][0]["rationale"] == ["Builds on design interests"]

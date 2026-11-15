@@ -177,6 +177,7 @@ test.describe('profile, settings, routes and accessibility', () => {
   });
   test('landing has no serious or critical automated WCAG violations', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByRole('heading', { name: /big goals/i })).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     const severe = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
     expect(severe, JSON.stringify(severe.map(v => ({ id: v.id, nodes: v.nodes.length })))).toEqual([]);

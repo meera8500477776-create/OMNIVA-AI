@@ -19,10 +19,19 @@ logger = logging.getLogger("omniva.gemini")
 
 
 class GeminiError(RuntimeError):
-    def __init__(self, code: str, message: str, status_code: int = 503, *, retryable: bool = False):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status_code: int = 503,
+        *,
+        retryable: bool = False,
+        upstream_status: int | None = None,
+    ):
         super().__init__(message)
         self.code, self.status_code = code, status_code
         self.retryable = retryable
+        self.upstream_status = upstream_status
 
 
 class GeminiProvider:
@@ -35,7 +44,7 @@ class GeminiProvider:
         self,
         api_key: SecretStr | str | None,
         *,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.5-flash-lite",
         timeout: float = 15,
         max_requests_per_minute: int = 20,
         max_requests_per_day: int = 100,
@@ -146,8 +155,20 @@ class GeminiProvider:
             status = exc.code
             # Never copy provider error bodies into logs or client-visible messages.
             if status == 429:
-                raise GeminiError("provider_rate_limited", "Gemini request was rate limited", 429, retryable=True) from None
-            raise GeminiError("provider_error", "Gemini request was rejected", 502, retryable=status >= 500) from None
+                raise GeminiError(
+                    "provider_rate_limited",
+                    "Gemini request was rate limited",
+                    429,
+                    retryable=True,
+                    upstream_status=status,
+                ) from None
+            raise GeminiError(
+                "provider_error",
+                "Gemini request was rejected",
+                502,
+                retryable=status >= 500,
+                upstream_status=status,
+            ) from None
         except (URLError, OSError, TimeoutError) as exc:
             raise GeminiError("provider_connection_error", "Gemini connection failed", 502, retryable=True) from exc
         try:

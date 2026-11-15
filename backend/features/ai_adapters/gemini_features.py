@@ -49,7 +49,10 @@ class GeminiWorkflowPlanner:
                 "Use only tools search, career, email_draft, email_send, reminder, browser_read, "
                 "browser_fill, tutor, voice, companion, notify, delay, complete. Never use shell, "
                 "code execution, desktop control, or fabricate credentials. External actions require "
-                "approval_required=true and risk=high. A step has id, description, tool, input, "
+                "approval_required=true and risk=high. Include external actions only when the user "
+                "explicitly requests them; do not invent email, reminder, notification, or browsing "
+                "actions. For learning or planning requests, use tutor and complete steps only. "
+                "A step has id, description, tool, input, "
                 "expected_output, dependencies, risk, approval_required. Return at most 12 steps."
             ),
             messages=[{"role": "user", "text": request}],

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../../lib/api'
+import { api, appMode } from '../../lib/api'
 
 type Reminder = { id: string; title: string; body: string; reminder_type: string; scheduled_at: string; status: string; acknowledged_at?: string | null }
 const personas = ['mother-like', 'father-like', 'best-friend', 'sibling', 'girlfriend', 'boyfriend'] as const
@@ -7,6 +7,7 @@ const personas = ['mother-like', 'father-like', 'best-friend', 'sibling', 'girlf
 export function CareCompanionPanel() {
   const [persona, setPersona] = useState<string>('best-friend')
   const [sessionId, setSessionId] = useState('')
+  const [sessionDemo, setSessionDemo] = useState(appMode === 'demo')
   const [text, setText] = useState('')
   const [answer, setAnswer] = useState('')
   const [title, setTitle] = useState('')
@@ -30,13 +31,13 @@ export function CareCompanionPanel() {
   async function start(promptId?: string) {
     setError('');
     if (!promptId && !sessionConsent) { setError('Please consent before starting an AI companion session.'); return }
-    try { const r = await api<{ session_id: string }>('/features/care-companion/sessions', { method: 'POST', body: JSON.stringify({ persona, locale: 'en', consent: true }) }); setSessionId(r.session_id); setAnswer('Conversation started. This is an AI companion, not a real person.'); if (promptId) await acknowledge(promptId) }
+    try { const r = await api<{ session_id: string; demo: boolean }>('/features/care-companion/sessions', { method: 'POST', body: JSON.stringify({ persona, locale: 'en', consent: true }) }); setSessionId(r.session_id); setSessionDemo(r.demo); setAnswer('Conversation started. This is an AI companion, not a real person.'); if (promptId) await acknowledge(promptId) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not start session.') }
     if (promptId) await acknowledge(promptId)
   }
   async function send() {
     if (!sessionId || !text.trim()) return
-    try { const r = await api<{ answer: string }>(`/features/care-companion/sessions/${sessionId}/turns`, { method: 'POST', body: JSON.stringify({ text }) }); setAnswer(r.answer); setText('') }
+    try { const r = await api<{ answer: string; demo: boolean }>(`/features/care-companion/sessions/${sessionId}/turns`, { method: 'POST', body: JSON.stringify({ text }) }); setAnswer(r.answer); setSessionDemo(r.demo); setText('') }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not send message.') }
   }
   async function schedule(e: React.FormEvent) {
@@ -50,7 +51,7 @@ export function CareCompanionPanel() {
   }
   async function acknowledge(id: string) { await api(`/features/care-companion/reminders/${id}/acknowledge`, { method: 'POST' }); setIncomingPrompt(current => current?.id === id ? null : current); setNotice('Check-in acknowledged.'); await refresh() }
   return <section aria-label="AI Care Companion" className="omniva-care-companion">
-    <header><h1>AI Care Companion</h1><p>Integrated demo companion · deadlines are stored in the configured database.</p></header>
+    <header><h1>AI Care Companion</h1><p>{sessionId ? sessionDemo ? 'DEMO COMPANION' : 'GEMINI COMPANION · TEXT' : appMode === 'demo' ? 'Integrated demo companion' : 'Gemini conversational service'} · deadlines are stored in the configured database.</p></header>
     <p>Every persona is an AI companion, not a real person. Stay connected with people you trust.</p>
     <label>Choose a companion <select value={persona} onChange={e => setPersona(e.target.value)}>{personas.map(p => <option key={p}>{p}</option>)}</select></label>
     <label><input type="checkbox" checked={sessionConsent} onChange={e => setSessionConsent(e.target.checked)} /> I consent to an AI companion conversation.</label><button type="button" onClick={() => void start()} disabled={!sessionConsent}>Start in-app conversation</button>

@@ -178,8 +178,21 @@ async def career(
                 json_mode=True,
             )
             data = json.loads(raw)
+            # Gemini sometimes emits the requested JSON array directly even when
+            # the prompt asks for an enclosing object. Normalize that valid shape.
+            if isinstance(data, list):
+                data = {"recommendations": data}
             if not isinstance(data.get("recommendations"), list) or not 1 <= len(data["recommendations"]) <= 4:
                 raise ValueError
+            # The model can serialize a single rationale as a string. Keep the
+            # public API contract stable by normalizing text fields to string lists.
+            for item in data["recommendations"]:
+                if not isinstance(item, dict):
+                    raise ValueError
+                for field in ("rationale", "skill_gaps", "roadmap"):
+                    value = item.get(field)
+                    if isinstance(value, str):
+                        item[field] = [value]
             result = CareerResponse(
                 recommendations=data["recommendations"],
                 taxonomy_version="gemini-guidance-v1",
