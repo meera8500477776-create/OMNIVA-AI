@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api, appMode } from '../../lib/api'
+import { api } from '../../lib/api'
 
-type EmailRow = { id: string; sender: string; subject: string; category: string; summary: string; unread: boolean }
-type Draft = { draft_id: string; body: string; subject: string; }
+type EmailRow = { email: { id: string; sender: string; subject: string; unread: boolean }; category: string; summary: string; injection_suspected: boolean }
+type Draft = { draft_id: string; email_id: string; body: string; tone: string; demo: boolean }
 export function EmailAgentPanel() {
   const [rows, setRows] = useState<EmailRow[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -27,10 +27,10 @@ export function EmailAgentPanel() {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not send.') }
   }
   return <section aria-label="Email Agent" className="omniva-email-agent">
-    <header><h1>Email Agent</h1><p>{appMode === 'demo' ? 'Fictional demo inbox · nothing is sent to an external email account.' : 'Connected inbox'}</p></header>
+    <header><h1>Email Agent</h1><p>Fictional demo inbox · nothing is sent to an external email account.</p></header>
     <button type="button" onClick={() => void load()}>Refresh inbox</button>
-    <ul>{rows.map(row => <li key={row.id}><strong>{row.subject}</strong><span>{row.sender} · {row.category}</span><p>{row.summary}</p><button type="button" onClick={() => void makeDraft(row.id)}>Review and draft</button></li>)}</ul>
-    {draft && <section aria-label="Draft review"><h2>Review draft</h2><p><strong>{draft.subject}</strong></p><pre>{draft.body}</pre><button onClick={() => void approve()}>Request send approval</button>{approval && <button onClick={() => void send()}>Approve simulated send</button>}</section>}
+    <ul>{rows.map(row => <li key={row.email.id}><strong>{row.email.subject}</strong><span>{row.email.sender} · {row.category}</span><p>{row.summary}</p>{row.injection_suspected && <p role="note">This message contains untrusted instructions. Review it carefully.</p>}<button type="button" onClick={() => void makeDraft(row.email.id)}>Review and draft</button></li>)}</ul>
+    {draft && <section aria-label="Draft review"><h2>Review draft</h2><p>Reply for: <strong>{rows.find(row => row.email.id === draft.email_id)?.email.subject ?? 'selected message'}</strong></p><pre>{draft.body}</pre><button onClick={() => void approve()}>Request send approval</button>{approval && <button onClick={() => void send()}>Approve simulated send</button>}</section>}
     {notice && <p role="status">{notice}</p>}{error && <p role="alert">{error}</p>}
     <p>Each send requires explicit approval. Demo mode never sends email.</p>
   </section>

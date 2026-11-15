@@ -190,8 +190,8 @@ test('Email Agent loads inbox, drafts, gates approval and simulates send through
   await page.route('**/api/v1/features/email-agent/**', async route => {
     const path = new URL(route.request().url()).pathname;
     calls.push(`${route.request().method()} ${path}`);
-    if (path.endsWith('/inbox')) return route.fulfill({ json: { items: [{ id: 'mail-1', sender: 'Demo sender', subject: 'Course update', category: 'updates', summary: 'A fictional course update.', unread: true }] } });
-    if (path.endsWith('/drafts')) return route.fulfill({ json: { draft_id: 'draft-1', subject: 'Re: Course update', body: 'Thanks for the update.' } });
+    if (path.endsWith('/inbox')) return route.fulfill({ json: { items: [{ email: { id: 'mail-1', sender: 'Demo sender', subject: 'Course update', body: 'A fictional course update.', unread: true }, category: 'normal', summary: 'A fictional course update.', injection_suspected: false, suggested_actions: ['review', 'draft-reply'] }] } });
+    if (path.endsWith('/drafts')) return route.fulfill({ json: { draft_id: 'draft-1', email_id: 'mail-1', body: 'Thanks for the update.', tone: 'professional', demo: true } });
     if (path.endsWith('/approvals')) return route.fulfill({ json: { approval: 'approval-1' } });
     if (path.endsWith('/send')) return route.fulfill({ json: { sent: false, status: 'simulated', demo: true } });
     return route.fulfill({ status: 404, json: {} });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, appMode } from '../../lib/api'
+import { api } from '../../lib/api'
 
 type Reminder = { id: string; title: string; body: string; reminder_type: string; scheduled_at: string; status: string; acknowledged_at?: string | null }
 const personas = ['mother-like', 'father-like', 'best-friend', 'sibling', 'girlfriend', 'boyfriend'] as const
@@ -50,7 +50,7 @@ export function CareCompanionPanel() {
   }
   async function acknowledge(id: string) { await api(`/features/care-companion/reminders/${id}/acknowledge`, { method: 'POST' }); setIncomingPrompt(current => current?.id === id ? null : current); setNotice('Check-in acknowledged.'); await refresh() }
   return <section aria-label="AI Care Companion" className="omniva-care-companion">
-    <header><h1>AI Care Companion</h1><p>{appMode === 'demo' ? 'Demo service · reminders persist in the configured database.' : 'AI companion · provider availability depends on configuration.'}</p></header>
+    <header><h1>AI Care Companion</h1><p>Integrated demo companion · deadlines are stored in the configured database.</p></header>
     <p>Every persona is an AI companion, not a real person. Stay connected with people you trust.</p>
     <label>Choose a companion <select value={persona} onChange={e => setPersona(e.target.value)}>{personas.map(p => <option key={p}>{p}</option>)}</select></label>
     <label><input type="checkbox" checked={sessionConsent} onChange={e => setSessionConsent(e.target.checked)} /> I consent to an AI companion conversation.</label><button type="button" onClick={() => void start()} disabled={!sessionConsent}>Start in-app conversation</button>

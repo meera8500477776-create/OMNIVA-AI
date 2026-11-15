@@ -1,4 +1,4 @@
-import { api, appMode } from './lib/api'
+import { api } from './lib/api'
 import { CareCompanionPanel } from './features/care-companion/CareCompanionPanel'
 import { EmailAgentPanel } from './features/email-agent/EmailAgentPanel'
 import { AutopilotDashboard, type AutopilotApi } from './features/autopilot/AutopilotDashboard'
@@ -25,4 +25,4 @@ const autopilotApi: AutopilotApi = {
 
 export function CareCompanionPage() { return <div className="content-page"><CareCompanionPanel /></div> }
 export function EmailAgentPage() { return <div className="content-page"><EmailAgentPanel /></div> }
-export function AutopilotPage() { return <div className="content-page"><AutopilotDashboard api={autopilotApi} mode={appMode} /></div> }
+export function AutopilotPage() { return <div className="content-page"><AutopilotDashboard api={autopilotApi} mode="demo" /></div> }
