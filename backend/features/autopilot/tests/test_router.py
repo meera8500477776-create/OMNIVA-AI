@@ -29,6 +29,16 @@ def test_autopilot_router_uses_shared_auth_and_action_approval_contract():
     plan_id = planned.json()["id"]
     created = client.post("/api/v1/autopilot/workflows", json={"plan_id": plan_id}, headers=headers)
     workflow_id = created.json()["workflow_id"]
+    evidence = client.get(
+        f"/api/v1/autopilot/workflows/{workflow_id}/browser-evidence", headers=headers
+    )
+    assert evidence.status_code == 200
+    assert evidence.json()[0]["demo"] is True
+    assert client.get(
+        f"/api/v1/autopilot/workflows/{workflow_id}/browser-evidence",
+        headers={"X-Test-User": "user-b"},
+    ).status_code == 403
+    assert client.get("/api/v1/autopilot/history", headers=headers).status_code == 200
     assert (
         client.get(
             f"/api/v1/autopilot/workflows/{workflow_id}", headers={"X-Test-User": "user-b"}

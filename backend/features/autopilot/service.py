@@ -71,6 +71,12 @@ class AutopilotService:
     def history(self, user_id):
         return self.orchestrator.repository.list(user_id)
 
+    async def browser_evidence(self, workflow_id: str, user_id: str):
+        # Confirm workflow ownership before returning evidence from the demo fixture.
+        self.workflow(workflow_id, user_id)
+        page = await self.browser.inspect("https://internships.demo.test/list")
+        return [{"title": page["title"], "text": page["text"], "evidence_id": page["evidence_id"], "demo": page["demo"]}]
+
     def approvals_for_user(self, user_id):
         return [
             a for a in self.approvals.list_for_user(user_id) if a.status in {"pending", "approved"}

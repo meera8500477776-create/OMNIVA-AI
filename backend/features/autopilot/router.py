@@ -184,10 +184,19 @@ def create_autopilot_router(
                 "message": "Emergency stop released after explicit confirmation.",
             }
         except AutopilotError as exc:
-            raise _http_error(exc) from exc @ router.get("/history")
+            raise _http_error(exc) from exc
+
+    @router.get("/history")
 
     def history(user=Depends(current_user_dependency)):
         return [_snapshot(run) for run in service.history(_user_id(user))]
+
+    @router.get("/workflows/{workflow_id}/browser-evidence")
+    async def browser_evidence(workflow_id: str, user=Depends(current_user_dependency)):
+        try:
+            return await service.browser_evidence(workflow_id, _user_id(user))
+        except AutopilotError as exc:
+            raise _http_error(exc) from exc
 
     @router.post("/memory/consent")
     def memory_consent(payload: MemoryConsentRequest, user=Depends(current_user_dependency)):
