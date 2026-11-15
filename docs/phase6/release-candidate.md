@@ -55,7 +55,7 @@ No frontend routes can be enumerated from the committed integration branch becau
 - Docker PostgreSQL was unavailable because the Docker Desktop Linux engine was stopped. A local PostgreSQL 18 service is running, but connection authentication requires a password not available in this session. No existing database was inspected or modified.
 - Common hard-coded credential patterns were not found in the integrated source scan. This is a pattern scan, not a full security audit.
 - Accessibility automation, color contrast review, TypeScript, ESLint, frontend unit tests, and production build could not run without the frontend application.
-- GitHub Actions status was not checked for the integration commit; CI YAML presence alone is not evidence of a passing workflow.
+- GitHub combined status lookup for the pushed integration commit returned no statuses. No passing GitHub Actions run is verified; CI YAML presence alone is not evidence of a passing workflow.
 
 ## Local API demo
 
