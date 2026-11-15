@@ -21,9 +21,29 @@
 
 ## Available API
 
-The integrated API currently exposes authentication, user/profile, course, lesson, enrollment, progress, quiz, dashboard, career recommendations, tutor sessions/turns, voice sessions, avatar sessions, and desktop sessions under `/api/v1`. Health endpoints are `/health/live` and `/health/ready`.
+Registered API paths:
 
-The Email Agent, Care Companion, and Autopilot Python modules are present, but no HTTP routers for those modules are registered. Their UI panels are not mounted. The committed branch also has no complete React application entry point (`frontend/package.json` and `frontend/src/App.tsx` are absent), so it cannot serve a website yet.
+- Auth/profile: `/api/v1/auth/{register,login,refresh,logout,password/forgot,password/reset,me}`; `/api/v1/users/me`.
+- Learning: `/api/v1/courses`, `/api/v1/courses/{course_id}`, `/api/v1/courses/{course_id}/enroll`, `/api/v1/lessons/{lesson_id}`, `/api/v1/me/{enrollments,progress}`, `/api/v1/me/progress/{lesson_id}`, `/api/v1/me/enrollments/{course_id}`, `/api/v1/quizzes/attempts`.
+- Dashboard: `/api/v1/dashboard` and `/api/v1/dashboard/analytics`.
+- Features 1–5: `/api/v1/features/career/recommendations`, `/api/v1/features/tutor/sessions` and `/api/v1/features/tutor/sessions/{session_id}/turns`, `/api/v1/features/voice/sessions`, `/api/v1/features/avatar/sessions`, `/api/v1/features/desktop/sessions`.
+- Admin: `/api/v1/admin/audit-events`, `/api/v1/admin/courses`, `/api/v1/admin/courses/{course_id}`, `/api/v1/admin/courses/{course_id}/modules`, `/api/v1/admin/modules/{module_id}`, `/api/v1/admin/modules/{module_id}/lessons`, `/api/v1/admin/lessons/{lesson_id}`.
+- Health: `/health/live` and `/health/ready`.
+
+No frontend routes can be enumerated from the committed integration branch because the React app is absent. The Email Agent, Care Companion, and Autopilot Python modules are present, but no HTTP routers for those modules are registered. Their UI panels are not mounted. The branch has no `frontend/package.json` or `frontend/src/App.tsx`, so it cannot serve a website yet.
+
+## Feature status
+
+| Feature | Backend | Frontend | Verified behavior |
+|---|---|---|---|
+| Desktop Agent | Demo session endpoint and allowlisted capabilities | Missing integrated app | API demo and denied capability checks pass; no native executor configured |
+| Voice Assistant | Demo session endpoint | Missing integrated app | Session and consent checks pass; no live STT/LLM/TTS configured |
+| Career Guidance | Rule-based demo endpoint, authenticated and consent-gated | Missing integrated app | Object constraint compatibility and demo response pass |
+| Tutor/Whiteboard | Demo sessions/turns, database-backed records | Missing integrated app | Tutor demo prompt isolation and feature tests pass |
+| Talking Avatar | Demo session endpoint and avatar contract | Missing integrated app | Session checks pass; no real speech provider configured |
+| Email Agent | Python module only; no API route | Panel exists as an isolated file, not mounted | Email endpoint test skipped; no live Gmail integration verified |
+| Care Companion | Python module only; no API route | Panel exists as an isolated file, not mounted | Care endpoint test skipped; no persistent scheduler/call service |
+| Autopilot | Python module/router present but not registered with FastAPI | Dashboard exists as an isolated component, not mounted | Unit tests pass; no authenticated end-to-end workflow |
 
 ## Verification
 
