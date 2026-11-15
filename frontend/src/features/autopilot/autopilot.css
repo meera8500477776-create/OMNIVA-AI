@@ -1,0 +1,16 @@
+.autopilot-page { display: grid; gap: 1.25rem; }
+.autopilot-header, .autopilot-actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.autopilot-header h1 { margin: 0; }
+.autopilot-tabs { display: flex; flex-wrap: wrap; gap: .5rem; }
+.autopilot-tabs button { border: 1px solid var(--border, #d7dce5); background: var(--surface, white); border-radius: .7rem; padding: .6rem .9rem; }
+.autopilot-tabs button[aria-current="page"] { outline: 2px solid var(--primary, #6657d9); }
+.autopilot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; }
+.autopilot-composer textarea { display: block; width: 100%; resize: vertical; padding: .8rem; margin: .5rem 0 1rem; }
+.autopilot-plan, .autopilot-timeline { display: grid; gap: .8rem; padding-left: 1.5rem; }
+.autopilot-plan li, .autopilot-timeline li, .autopilot-approval, .autopilot-history { border: 1px solid var(--border, #d7dce5); border-radius: .8rem; padding: .9rem; }
+.autopilot-plan li span, .autopilot-plan li small, .autopilot-timeline li span { display: block; margin-top: .3rem; }
+.autopilot-timeline li[data-status="failed"] { border-color: #c43e4b; }
+.autopilot-timeline li[data-status="succeeded"] { border-color: #32916c; }
+.autopilot-timeline pre { max-width: 100%; overflow: auto; white-space: pre-wrap; }
+.autopilot-notice { border-inline-start: 4px solid #5574d9; padding: .8rem 1rem; background: var(--surface-muted, #f4f6fb); }
+@media (max-width: 600px) { .autopilot-actions { align-items: stretch; flex-direction: column; } .autopilot-actions button { width: 100%; } }
