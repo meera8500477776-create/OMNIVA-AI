@@ -27,10 +27,13 @@ Registered API paths:
 - Learning: `/api/v1/courses`, `/api/v1/courses/{course_id}`, `/api/v1/courses/{course_id}/enroll`, `/api/v1/lessons/{lesson_id}`, `/api/v1/me/{enrollments,progress}`, `/api/v1/me/progress/{lesson_id}`, `/api/v1/me/enrollments/{course_id}`, `/api/v1/quizzes/attempts`.
 - Dashboard: `/api/v1/dashboard` and `/api/v1/dashboard/analytics`.
 - Features 1–5: `/api/v1/features/career/recommendations`, `/api/v1/features/tutor/sessions` and `/api/v1/features/tutor/sessions/{session_id}/turns`, `/api/v1/features/voice/sessions`, `/api/v1/features/avatar/sessions`, `/api/v1/features/desktop/sessions`.
+- Email Agent: `/api/v1/features/email-agent/inbox`, `/drafts`, `/approvals`, `/send`, `/emergency-disable`, and `/activity` (all under the email-agent prefix).
+- Care Companion: `/api/v1/features/care-companion/personas`, `/sessions`, `/sessions/{session_id}`, `/sessions/{session_id}/turns`, `/sessions/{session_id}/persona`, `/memory/consent`, and `/memory`.
+- Autopilot: `/api/v1/autopilot/plans`, `/plans/{plan_id}`, `/workflows`, `/workflows/{workflow_id}` plus start/pause/resume/cancel/events, `/approvals` plus approve/deny, `/emergency-stop` plus release, `/history`, and `/memory` consent/CRUD routes.
 - Admin: `/api/v1/admin/audit-events`, `/api/v1/admin/courses`, `/api/v1/admin/courses/{course_id}`, `/api/v1/admin/courses/{course_id}/modules`, `/api/v1/admin/modules/{module_id}`, `/api/v1/admin/modules/{module_id}/lessons`, `/api/v1/admin/lessons/{lesson_id}`.
 - Health: `/health/live` and `/health/ready`.
 
-No frontend routes can be enumerated from the committed integration branch because the React app is absent. The Email Agent, Care Companion, and Autopilot Python modules are present, but no HTTP routers for those modules are registered. Their UI panels are not mounted. The branch has no `frontend/package.json` or `frontend/src/App.tsx`, so it cannot serve a website yet.
+No frontend routes can be enumerated from the committed integration branch because the React app is absent. Email, Care Companion, and Autopilot HTTP routers are mounted behind shared authentication and rate limiting. They reject requests with 503 in live mode until actual providers are configured. The branch has no `frontend/package.json` or `frontend/src/App.tsx`, so it cannot serve a website yet.
 
 ## Feature status
 
@@ -41,15 +44,16 @@ No frontend routes can be enumerated from the committed integration branch becau
 | Career Guidance | Rule-based demo endpoint, authenticated and consent-gated | Missing integrated app | Object constraint compatibility and demo response pass |
 | Tutor/Whiteboard | Demo sessions/turns, database-backed records | Missing integrated app | Tutor demo prompt isolation and feature tests pass |
 | Talking Avatar | Demo session endpoint and avatar contract | Missing integrated app | Session checks pass; no real speech provider configured |
-| Email Agent | Python module only; no API route | Panel exists as an isolated file, not mounted | Email endpoint test skipped; no live Gmail integration verified |
-| Care Companion | Python module only; no API route | Panel exists as an isolated file, not mounted | Care endpoint test skipped; no persistent scheduler/call service |
-| Autopilot | Python module/router present but not registered with FastAPI | Dashboard exists as an isolated component, not mounted | Unit tests pass; no authenticated end-to-end workflow |
+| Email Agent | Authenticated demo inbox, draft, approval, simulated send, disable, activity | Missing integrated app | Approval required; send is always simulated; fail-closed outside demo; in-memory state and no expiry/persistence |
+| Care Companion | Authenticated demo personas, text sessions, opt-in memory | Missing integrated app | Six personas, AI identity, consent, owner scoping and deletion tested; fail-closed outside demo; state is in memory |
+| Autopilot | Authenticated demo plans, workflows, approvals, stop, memory and history routes | Missing integrated app | Fictional internship workflow completed through two approvals; sends/reminders are simulations; fail-closed outside demo; state is in memory |
 
 ## Verification
 
 - Ruff: passed (`uv run ruff check app features tests`).
-- Backend and feature tests: 67 passed, 0 failed.
-- Live API QA against the disposable SQLite demo server: 10 passed, 0 failed, 2 skipped. Skips cover Email Agent and Care Companion HTTP tests because their routes are not registered.
+- Backend and feature tests: 72 passed, 0 failed.
+- Live API QA against the disposable SQLite demo server: 13 passed, 0 failed, 0 skipped, including Email Agent, Care Companion and the full Autopilot demo workflow.
+- Total executed backend/API tests: 85 passed, 0 failed, 0 skipped. The Playwright browser suite was blocked before test collection.
 - Browser suite: blocked at configuration because the frontend source is absent. Playwright reported this explicitly before starting tests.
 - Alembic: empty SQLite upgrade, downgrade to base, and re-upgrade passed. This does not verify PostgreSQL.
 - Docker PostgreSQL was unavailable because the Docker Desktop Linux engine was stopped. A local PostgreSQL 18 service is running, but connection authentication requires a password not available in this session. No existing database was inspected or modified.
@@ -76,4 +80,4 @@ The API listens at `http://127.0.0.1:8000`; health checks are `/health/live` and
 
 ## Acceptance
 
-**PARTIAL / BLOCKED:** the backend and registered feature demos run and pass their current automated checks. A complete website release is blocked by the missing committed frontend, unregistered Email/Care/Autopilot routes, absent feature persistence migrations, and unavailable PostgreSQL/browser verification. No public deployment or merge to `main` was performed.
+**PARTIAL / BLOCKED:** the authenticated backend demo routes and current automated checks pass. A complete website release is blocked by the missing committed frontend, absent Email/Care/Autopilot persistence migrations, in-memory feature state, and unavailable PostgreSQL/browser verification. No public deployment or merge to `main` was performed.

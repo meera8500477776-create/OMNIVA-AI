@@ -1,15 +1,19 @@
 import logging
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routes import auth, dashboard, features, health, learning, users
+from app.api.deps import get_current_user
+from app.api.routes import auth, dashboard, features, health, learning, phase4_features, users
 from app.core.config import settings
+from app.core.rate_limit import enforce_rate_limit
+from features.autopilot.router import create_autopilot_router
+from features.autopilot.service import AutopilotService
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("omniva.api")
@@ -19,6 +23,17 @@ app = FastAPI(
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url=None,
 )
+autopilot_service = AutopilotService()
+
+
+def require_demo_mode() -> None:
+    if settings.app_mode != "demo":
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "provider_unavailable", "message": "Live provider is not configured"},
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -143,3 +158,9 @@ app.include_router(learning.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(features.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
+app.include_router(phase4_features.router, prefix="/api/v1")
+app.include_router(
+    create_autopilot_router(autopilot_service, get_current_user),
+    prefix="/api/v1",
+    dependencies=[Depends(enforce_rate_limit), Depends(require_demo_mode)],
+)

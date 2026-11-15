@@ -150,11 +150,77 @@ def test_tutor_demo_isolated_from_live_prompt_execution(api, learner):
     assert 'board_events' in result and result['speech_ref'] is None
 
 
-@pytest.mark.skip(reason='Phase 4C Email Agent module exists in its standalone worktree, but no API route or ratified HTTP contract is registered.')
-def test_email_agent_requires_send_approval_and_local_mail_sink():
-    raise AssertionError('Enable after Phase 6 contract review; do not deliver live mail.')
+def test_email_agent_requires_explicit_approval_and_never_sends_in_demo(api, learner):
+    headers = learner[0]
+    inbox = api.get('/api/v1/features/email-agent/inbox', headers=headers)
+    assert inbox.status_code == 200 and inbox.json()['demo'] is True
+    assert 'fictional' in inbox.json()['label'].lower()
+    email_id = inbox.json()['items'][0]['email']['id']
+    draft = api.post('/api/v1/features/email-agent/drafts', headers=headers,
+                     json={'email_id': email_id, 'tone': 'professional'})
+    assert draft.status_code == 200 and draft.json()['demo'] is True
+    denied = api.post('/api/v1/features/email-agent/send', headers={
+        **headers, 'Idempotency-Key': f"qa-no-approval-{uuid.uuid4().hex[:12]}",
+    }, json={'approval': 'missing'})
+    assert denied.status_code == 403
+    approval = api.post('/api/v1/features/email-agent/approvals', headers=headers,
+                        json={'draft_id': draft.json()['draft_id']})
+    sent = api.post('/api/v1/features/email-agent/send', headers={
+        **headers, 'Idempotency-Key': f"qa-approved-{uuid.uuid4().hex[:12]}",
+    }, json={'approval': approval.json()['approval']})
+    assert sent.status_code == 200
+    assert sent.json()['demo'] is True and sent.json()['sent'] is False
 
 
-@pytest.mark.skip(reason='Phase 4C Care Companion module exists standalone, but no API route or ratified HTTP contract is registered.')
-def test_care_companion_requires_opt_in_honors_quiet_hours_and_emergency_stop():
-    raise AssertionError('Enable after Phase 6 contract review and safety implementation.')
+def test_care_companion_requires_consent_and_uses_owner_scoped_demo_sessions(api, learner):
+    headers = learner[0]
+    denied = api.post('/api/v1/features/care-companion/sessions', headers=headers,
+                      json={'persona': 'best-friend', 'consent': False})
+    assert denied.status_code == 403
+    personas = api.get('/api/v1/features/care-companion/personas', headers=headers)
+    assert personas.status_code == 200 and len(personas.json()['items']) == 6
+    started = api.post('/api/v1/features/care-companion/sessions', headers=headers,
+                       json={'persona': 'best-friend', 'locale': 'en', 'consent': True})
+    assert started.status_code == 201 and started.json()['ai_identity'] is True
+    session_id = started.json()['session_id']
+    turn = api.post(f'/api/v1/features/care-companion/sessions/{session_id}/turns',
+                    headers=headers, json={'text': 'I had a difficult day.'})
+    assert turn.status_code == 200 and turn.json()['demo'] is True
+    assert api.put('/api/v1/features/care-companion/memory/consent', headers=headers,
+                   json={'consent': True}).json()['enabled'] is True
+    assert api.post('/api/v1/features/care-companion/memory', headers=headers,
+                    json={'content': 'likes gardening'}).status_code == 200
+
+
+def test_autopilot_internship_demo_pauses_at_approval(api, learner):
+    headers = learner[0]
+    plan = api.post('/api/v1/autopilot/plans', headers=headers,
+                    json={'request': 'Help me find internships', 'demo': True})
+    assert plan.status_code == 200 and plan.json()['demo'] is True
+    assert any(step['approval_required'] for step in plan.json()['steps'])
+    workflow = api.post('/api/v1/autopilot/workflows', headers=headers,
+                        json={'plan_id': plan.json()['id']})
+    assert workflow.status_code == 200
+    workflow_id = workflow.json()['workflow_id']
+    started = api.post(f'/api/v1/autopilot/workflows/{workflow_id}/start', headers=headers)
+    assert started.status_code == 200
+    assert started.json()['demo'] is True
+    assert started.json()['status'] == 'waiting_approval'
+    assert any(step['status'] == 'waiting_approval' for step in started.json()['steps'])
+    snapshot = started.json()
+    for _ in range(2):
+        pending = api.get('/api/v1/autopilot/approvals', headers=headers).json()
+        approval = next(item for item in pending if item['status'] == 'pending')
+        decision = api.post(f"/api/v1/autopilot/approvals/{approval['id']}/approve",
+                            headers=headers, json={
+            'approval_id': approval['id'],
+            'plan_hash': approval['plan_hash'],
+            'action_hash': approval['action_hash'],
+            'confirmed': True,
+            'action_text': approval['action_text'],
+        })
+        assert decision.status_code == 200
+        snapshot = decision.json()
+    assert snapshot['status'] == 'completed'
+    assert all(step['status'] == 'succeeded' for step in snapshot['steps'])
+    assert any('simulated' in str(step['result']).lower() for step in snapshot['steps'])
