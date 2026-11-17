@@ -3,10 +3,12 @@
 Revision ID: b7c81f041e2a
 Revises: a3b3cded9149
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel
+
 from alembic import op
 
 revision: str = "b7c81f041e2a"

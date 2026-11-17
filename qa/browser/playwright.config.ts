@@ -21,7 +21,10 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     viewport: { width: 1440, height: 1000 },
-    launchOptions: executablePath ? { executablePath } : undefined,
+    launchOptions: {
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -34,6 +37,9 @@ export default defineConfig({
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
-    env: { VITE_APP_MODE: 'demo', VITE_API_BASE_URL: 'http://127.0.0.1:9/api/v1' },
+    env: {
+      VITE_APP_MODE: process.env.OMNIVA_E2E_MODE ?? 'demo',
+      VITE_API_BASE_URL: 'http://127.0.0.1:9/api/v1',
+    },
   },
 });

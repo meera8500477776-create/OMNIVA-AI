@@ -19,6 +19,8 @@ REQUIRED = {
     '/api/v1/features/tutor/sessions/{session_id}/turns': {'post'},
     '/api/v1/features/voice/sessions': {'post'}, '/api/v1/features/avatar/sessions': {'post'},
     '/api/v1/features/voice/sessions/{session_id}/turns': {'post'},
+    '/api/v1/features/voice/sessions/{session_id}/transcribe': {'post'},
+    '/api/v1/features/voice/sessions/{session_id}/cancel': {'post'},
     '/api/v1/features/desktop/sessions': {'post'},
     '/api/v1/features/care-companion/personas': {'get'},
     '/api/v1/features/care-companion/sessions': {'post'},

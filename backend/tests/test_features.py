@@ -82,7 +82,6 @@ def test_real_mode_never_silently_uses_demo(client, monkeypatch):
 
 
 def test_live_career_normalizes_gemini_top_level_recommendation_array(client, monkeypatch):
-    import asyncio
 
     from app.api.routes import features
     from app.core.config import settings

@@ -54,10 +54,10 @@ function validationErrors(err: Record<string, unknown>): Record<string, string> 
 
 async function request<T>(path: string, init: RequestInit, allowRefresh: boolean, omitAuthorization = false): Promise<T> {
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 15_000)
+  const timeout = window.setTimeout(() => controller.abort(), path.includes('/features/voice/') ? 150_000 : 15_000)
   const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const headers = new Headers(init.headers)
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   headers.set('X-Request-ID', requestId)
   if (!omitAuthorization && accessToken && !skipsRefresh(path)) {
     headers.set('Authorization', `Bearer ${accessToken}`)

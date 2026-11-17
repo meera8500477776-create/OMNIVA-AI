@@ -108,12 +108,14 @@ test.describe('five AI feature pages are deterministic and provider-offline', ()
     await expect(page.getByText(/simulated plan/i)).toBeVisible();
     await expect(page.getByText(/no desktop action was performed/i)).toBeVisible();
   });
-  test('Voice Assistant is text-only and never requests microphone permission', async ({ page }) => {
+  test('Voice Assistant labels demo mode and keeps its offline text path', async ({ page }) => {
     const secureRequests: string[] = [];
     page.on('request', request => { if (request.url().startsWith('https://')) secureRequests.push(request.url()); });
     await page.goto('/voice-assistant');
-    await page.getByRole('button', { name: /start text assistant/i }).click();
-    await expect(page.getByText(/text demo only\. no provider or microphone is used/i)).toBeVisible();
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: /start voice assistant/i }).click();
+    await expect(page.getByText(/demo mode: live speech providers are not called/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Record speech' })).toBeDisabled();
     await page.getByRole('textbox', { name: /message your voice assistant/i }).fill('Help me review today.');
     await page.getByRole('button', { name: /send message/i }).click();
     await expect(page.getByText(/one step at a time/i)).toBeVisible();

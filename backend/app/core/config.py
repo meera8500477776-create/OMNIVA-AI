@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float = 15.0
     gemini_max_requests_per_minute: int = 20
     gemini_max_requests_per_day: int = 100
+    gnani_api_key: SecretStr | None = None
+    gnani_stt_url: str = "https://api.vachana.ai/stt/v3"
+    gnani_auth_header: str = "X-API-Key-ID"
+    gnani_model: str = "prisma-v3.0"
+    gnani_language: str = "indic-auto"
+    gnani_output_format: str = "codemix"
+    gnani_timeout_seconds: float = 60.0
+    gnani_tts_url: str = "https://api.vachana.ai/api/v1/tts/inference"
+    gnani_tts_model: str = "timbre-v2.5"
+    gnani_tts_voice: str = ""
+    gnani_tts_timeout_seconds: float = 60.0
 
     @field_validator("cors_origins", mode="before")
     @classmethod

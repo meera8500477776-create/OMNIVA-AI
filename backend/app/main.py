@@ -105,11 +105,12 @@ async def security_and_request_id(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid4())
     request.state.request_id = request_id
     content_length = request.headers.get("content-length")
-    if (
-        content_length
-        and content_length.isdigit()
-        and int(content_length) > settings.max_request_bytes
-    ):
+    max_body = (
+        10 * 1024 * 1024 + 64 * 1024
+        if request.url.path.endswith("/transcribe")
+        else settings.max_request_bytes
+    )
+    if content_length and content_length.isdigit() and int(content_length) > max_body:
         response = JSONResponse(
             status_code=413,
             content={

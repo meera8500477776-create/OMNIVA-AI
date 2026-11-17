@@ -17,8 +17,7 @@ class CareerRequest(BaseModel):
         # Keep the internal contract as list[str] while accepting the earlier UI object shape.
         if isinstance(value, dict):
             if len(value) > 20 or any(
-                not isinstance(key, str) or not isinstance(item, str)
-                for key, item in value.items()
+                not isinstance(key, str) or not isinstance(item, str) for key, item in value.items()
             ):
                 raise ValueError("constraints must contain at most 20 string key/value pairs")
             return [f"{key}: {item}" for key, item in value.items()]
@@ -59,7 +58,7 @@ class TutorTurnRequest(BaseModel):
 class VoiceSessionRequest(BaseModel):
     consent: bool = False
     mode: str = Field(pattern="^(practice|assistant|lesson)$")
-    locale: str = Field(default="en", min_length=2, max_length=16)
+    locale: str = Field(default="en", pattern="^(en|te)$")
 
 
 class AvatarSessionRequest(BaseModel):
